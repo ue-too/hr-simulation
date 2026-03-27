@@ -40,6 +40,7 @@ class StraightSegment:
     tracktype: Literal["STRAIGHT"]
     start_point: tuple[float, float]
     end_point: tuple[float, float]
+    slope: float = 0.0  # grade (rise/run), positive = uphill
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class CurveSegment:
     center: tuple[float, float]
     radius: float
     angle_span: float  # radians, positive = CCW, negative = CW
+    slope: float = 0.0  # grade (rise/run), positive = uphill
 
 
 TrackSegment = StraightSegment | CurveSegment
@@ -66,6 +68,7 @@ class TrackFrame:
     turn_radius: float  # distance from curve center (inf on straights)
     target_radius: float  # lane-keeping target radius (inf on straights)
     segment_index: int  # which segment the horse is on
+    slope: float = 0.0  # grade (rise/run), 0 = flat
 
 
 # ---------------------------------------------------------------------------

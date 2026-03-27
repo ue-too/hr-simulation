@@ -142,6 +142,7 @@ class TrackNavigator:
             turn_radius=float("inf"),
             target_radius=float("inf"),
             segment_index=self.segment_index,
+            slope=seg.slope,
         )
 
     def _curve_frame(self, seg: CurveSegment, position: np.ndarray) -> TrackFrame:
@@ -174,6 +175,7 @@ class TrackNavigator:
             turn_radius=turn_radius,
             target_radius=target_radius,
             segment_index=self.segment_index,
+            slope=seg.slope,
         )
 
     # ------------------------------------------------------------------

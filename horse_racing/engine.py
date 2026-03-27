@@ -270,6 +270,11 @@ class HorseRacingEngine:
         if tangential_vel >= eff.max_speed and tangential_accel > 0:
             tangential_accel = 0.0
 
+        # Slope gravity: uphill decelerates, downhill accelerates
+        if frame.slope != 0.0:
+            slope_angle = math.atan(frame.slope)
+            tangential_accel += -9.81 * math.sin(slope_angle)
+
         normal_accel = -centripetal - normal_vel * NORMAL_DAMP + extra_normal
 
         total_accel = tangential_accel * frame.tangential + normal_accel * frame.normal
@@ -332,6 +337,7 @@ class HorseRacingEngine:
                     "rel_horse_2": (relatives[1][1], relatives[1][2]),
                     "rel_horse_3": (relatives[2][1], relatives[2][2]),
                     "cornering_margin": cornering_margin,
+                    "slope": frame.slope,
                     "collision": hs.collision_this_tick,
                     "finished": hs.finished,
                 }
@@ -344,7 +350,7 @@ class HorseRacingEngine:
         return obs_list
 
     def obs_to_array(self, obs: dict) -> np.ndarray:
-        """Convert observation dict to flat numpy array (15,)."""
+        """Convert observation dict to flat numpy array (16,)."""
         return np.array(
             [
                 obs["tangential_vel"],
@@ -362,6 +368,7 @@ class HorseRacingEngine:
                 obs["rel_horse_3"][0],
                 obs["rel_horse_3"][1],
                 min(obs["cornering_margin"], 1000.0),  # cap inf
+                obs["slope"],
             ],
             dtype=np.float32,
         )

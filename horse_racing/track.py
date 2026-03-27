@@ -27,11 +27,14 @@ def parse_segment(raw: dict) -> TrackSegment:
     start_point = _parse_point(raw["startPoint"])
     end_point = _parse_point(raw["endPoint"])
 
+    slope = float(raw.get("slope", 0.0))
+
     if tracktype == "STRAIGHT":
         return StraightSegment(
             tracktype="STRAIGHT",
             start_point=start_point,
             end_point=end_point,
+            slope=slope,
         )
     elif tracktype == "CURVE":
         center = _parse_point(raw["center"])
@@ -44,6 +47,7 @@ def parse_segment(raw: dict) -> TrackSegment:
             center=center,
             radius=radius,
             angle_span=angle_span,
+            slope=slope,
         )
     else:
         raise ValueError(f"Unknown track segment type: {tracktype}")
