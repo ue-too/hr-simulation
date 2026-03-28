@@ -162,7 +162,7 @@ def main() -> None:
             for i in range(stage["iterations"]):
                 result = algo.train()
                 env_runners = result.get("env_runners", {})
-                mean_reward = env_runners.get("episode_reward_mean", 0.0)
+                mean_reward = env_runners.get("episode_return_mean", env_runners.get("episode_reward_mean", 0.0))
 
                 if (i + 1) % 10 == 0 or i == 0:
                     print(
@@ -243,7 +243,7 @@ def main() -> None:
     for i in range(args.archetype_iterations):
         result = algo_arch.train()
         env_runners = result.get("env_runners", {})
-        mean_reward = env_runners.get("episode_reward_mean", 0.0)
+        mean_reward = env_runners.get("episode_return_mean", env_runners.get("episode_reward_mean", 0.0))
 
         if (i + 1) % 10 == 0 or i == 0:
             print(f"  Archetype Iter {i+1:4d} | reward: {mean_reward:8.2f}")
