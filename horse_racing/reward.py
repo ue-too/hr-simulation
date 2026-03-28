@@ -1,9 +1,9 @@
-"""Reward function module — modular reward shaping for competitive racing."""
+"""Reward function module — tuned for competitive racing with speed incentives."""
 
 from __future__ import annotations
 
 # Finish order bonuses: 1st place gets the most, 4th gets the least
-FINISH_ORDER_BONUS = [100.0, 50.0, 25.0, 10.0]
+FINISH_ORDER_BONUS = [500.0, 300.0, 150.0, 50.0]
 
 
 def compute_reward(
@@ -30,35 +30,36 @@ def compute_reward(
     """
     reward = 0.0
 
-    # Forward progress — primary signal, scaled to dominate
-    reward += 100.0 * (obs_curr["track_progress"] - obs_prev["track_progress"])
+    # Forward progress — dominant signal
+    reward += 1000.0 * (obs_curr["track_progress"] - obs_prev["track_progress"])
 
-    # Speed efficiency — small bonus for going fast relative to capability
+    # Speed bonus — rewards going fast relative to max capability
     max_spd = obs_curr["effective_max_speed"]
     if max_spd > 1e-6:
-        reward += 0.05 * (obs_curr["tangential_vel"] / max_spd)
+        reward += 0.3 * (obs_curr["tangential_vel"] / max_spd)
+
+    # Speed above cruise bonus — rewards pushing beyond auto-cruise
+    cruise_spd = obs_curr["effective_cruise_speed"]
+    vel = obs_curr["tangential_vel"]
+    if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
+        reward += 0.2 * (vel - cruise_spd) / (max_spd - cruise_spd)
+
+    # Alive penalty — creates time pressure to finish faster
+    reward -= 0.1
 
     # Placement bonus — per-tick incentive to be ahead of others
     if num_horses > 1:
-        reward += 0.02 * (num_horses - placement) / (num_horses - 1)
+        reward += 0.1 * (num_horses - placement) / (num_horses - 1)
 
-    # Lane-holding penalty — reduced from 0.05, less punitive on curves
-    reward -= 0.01 * abs(obs_curr["displacement"])
-
-    # Collision penalty — reduced, some bumping is strategic with push traits
+    # Collision penalty — reduced, some bumping is strategic
     if collision_occurred:
-        reward -= 0.5
+        reward -= 0.3
 
     # Stamina crisis — only penalize severe depletion
     if obs_curr["stamina_ratio"] < 0.10:
-        reward -= 0.2
+        reward -= 0.1
 
-    # Cornering stress — penalize exceeding grip threshold
-    cornering_margin = obs_curr.get("cornering_margin", float("inf"))
-    if cornering_margin < 0:
-        reward -= 0.01 * abs(cornering_margin)
-
-    # Finish order bonus — rewards racing position, not just finishing
+    # Finish order bonus — large terminal reward for racing position
     if finish_order is not None:
         idx = min(finish_order - 1, len(FINISH_ORDER_BONUS) - 1)
         reward += FINISH_ORDER_BONUS[idx]
