@@ -76,10 +76,12 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         all_obs = self.engine.get_observations()
         observations = {}
         self._prev_obs = {}
+        self._prev_placements: dict[str, int] = {}
         for i in range(self.horse_count):
             agent_id = f"horse_{i}"
             observations[agent_id] = self.engine.obs_to_array(all_obs[i])
             self._prev_obs[agent_id] = all_obs[i]
+            self._prev_placements[agent_id] = i + 1  # initial placement by lane
 
         infos = {agent_id: {} for agent_id in observations}
         return observations, infos
@@ -120,13 +122,16 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
             prev = self._prev_obs.get(agent_id, obs_curr)
             finish_order = placements[i] if obs_curr["finished"] else None
             archetype = self.archetypes.get(agent_id)
+            prev_place = self._prev_placements.get(agent_id)
             rewards[agent_id] = compute_reward(
                 prev, obs_curr, obs_curr["collision"],
                 placement=placements[i],
                 num_horses=self.horse_count,
                 finish_order=finish_order,
                 archetype=archetype,
+                prev_placement=prev_place,
             )
+            self._prev_placements[agent_id] = placements[i]
             terminateds[agent_id] = obs_curr["finished"]
             truncateds[agent_id] = any_truncated
             infos[agent_id] = {}

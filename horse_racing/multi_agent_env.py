@@ -62,9 +62,11 @@ class HorseRacingEnv(ParallelEnv):
         all_obs = self.engine.get_observations()
         observations = {}
         self._prev_obs = {}
+        self._prev_placements: dict[str, int] = {}
         for i, agent in enumerate(self.agents):
             observations[agent] = self.engine.obs_to_array(all_obs[i])
             self._prev_obs[agent] = all_obs[i]
+            self._prev_placements[agent] = i + 1
 
         infos = {agent: {} for agent in self.agents}
         return observations, infos
@@ -97,12 +99,15 @@ class HorseRacingEnv(ParallelEnv):
 
             prev = self._prev_obs.get(agent, obs_curr)
             finish_order = placements[i] if obs_curr["finished"] else None
+            prev_place = self._prev_placements.get(agent)
             rewards[agent] = compute_reward(
                 prev, obs_curr, obs_curr["collision"],
                 placement=placements[i],
                 num_horses=self._config.horse_count,
                 finish_order=finish_order,
+                prev_placement=prev_place,
             )
+            self._prev_placements[agent] = placements[i]
             terminated[agent] = obs_curr["finished"]
             truncated[agent] = self._step_count >= self.max_steps
             infos[agent] = {}

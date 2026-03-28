@@ -52,6 +52,7 @@ class HorseRacingSingleEnv(gym.Env):
         super().reset(seed=seed)
         self.engine.reset()
         self._step_count = 0
+        self._prev_placement: int = 1
 
         all_obs = self.engine.get_observations()
         self._prev_obs = all_obs[0]
@@ -79,7 +80,9 @@ class HorseRacingSingleEnv(gym.Env):
             placement=placements[0],
             num_horses=self.engine.horse_count,
             finish_order=finish_order,
+            prev_placement=self._prev_placement,
         )
+        self._prev_placement = placements[0]
 
         terminated = obs_curr["finished"]
         truncated = self._step_count >= self.max_steps

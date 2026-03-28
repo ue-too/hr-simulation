@@ -22,6 +22,7 @@ def compute_reward(
     num_horses: int = 4,
     finish_order: int | None = None,
     archetype: str | None = None,
+    prev_placement: int | None = None,
 ) -> float:
     """Compute the per-step reward for a single horse.
 
@@ -81,6 +82,11 @@ def compute_reward(
     if finish_order is not None:
         idx = min(finish_order - 1, len(FINISH_ORDER_BONUS) - 1)
         reward += FINISH_ORDER_BONUS[idx]
+
+    # Overtaking bonus — rewards gaining positions
+    if prev_placement is not None and placement < prev_placement:
+        positions_gained = prev_placement - placement
+        reward += 0.5 * positions_gained  # +0.5 per position gained
 
     # Archetype-specific reward shaping
     if archetype:
