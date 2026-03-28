@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "description": "Observation vector layout shared between Python training and browser inference.",
+  "size": 26,
+  "fields": [
+    { "index": 0,  "name": "tangential_vel",        "type": "continuous" },
+    { "index": 1,  "name": "normal_vel",             "type": "continuous" },
+    { "index": 2,  "name": "displacement",           "type": "continuous" },
+    { "index": 3,  "name": "track_progress",         "type": "continuous" },
+    { "index": 4,  "name": "curvature",              "type": "continuous" },
+    { "index": 5,  "name": "stamina_ratio",          "type": "continuous" },
+    { "index": 6,  "name": "effective_cruise_speed",  "type": "continuous" },
+    { "index": 7,  "name": "effective_max_speed",     "type": "continuous" },
+    { "index": 8,  "name": "rel_horse_1_tang",       "type": "continuous" },
+    { "index": 9,  "name": "rel_horse_1_norm",       "type": "continuous" },
+    { "index": 10, "name": "rel_horse_2_tang",       "type": "continuous" },
+    { "index": 11, "name": "rel_horse_2_norm",       "type": "continuous" },
+    { "index": 12, "name": "rel_horse_3_tang",       "type": "continuous" },
+    { "index": 13, "name": "rel_horse_3_norm",       "type": "continuous" },
+    { "index": 14, "name": "cornering_margin",       "type": "continuous" },
+    { "index": 15, "name": "slope",                  "type": "continuous" },
+    { "index": 16, "name": "pushing_power",          "type": "continuous" },
+    { "index": 17, "name": "push_resistance",        "type": "continuous" },
+    { "index": 18, "name": "mod_drafting",           "type": "binary" },
+    { "index": 19, "name": "mod_pack_pressure",      "type": "binary" },
+    { "index": 20, "name": "mod_pack_anxiety",       "type": "binary" },
+    { "index": 21, "name": "mod_front_runner",       "type": "binary" },
+    { "index": 22, "name": "mod_closer",             "type": "binary" },
+    { "index": 23, "name": "mod_mudder",             "type": "binary" },
+    { "index": 24, "name": "mod_gate_speed",         "type": "binary" },
+    { "index": 25, "name": "mod_endurance",          "type": "binary" }
+  ]
+}

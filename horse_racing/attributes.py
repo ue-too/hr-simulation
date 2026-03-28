@@ -14,14 +14,14 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 TRAIT_RANGES: dict[str, tuple[float, float]] = {
-    "cruise_speed": (8.0, 18.0),
-    "max_speed": (15.0, 25.0),
+    "cruise_speed": (12.0, 16.5),
+    "max_speed": (16.0, 20.0),
     "forward_accel": (0.5, 1.5),
     "turn_accel": (0.5, 1.5),
     "cornering_grip": (0.5, 1.5),
     "stamina": (50.0, 150.0),
     "stamina_recovery": (0.5, 2.0),
-    "weight": (400.0, 600.0),
+    "weight": (430.0, 550.0),
     "pushing_power": (0.0, 1.0),
     "push_resistance": (0.0, 1.0),
 }
@@ -31,14 +31,14 @@ TRAIT_NAMES: list[str] = list(TRAIT_RANGES.keys())
 
 @dataclass
 class CoreAttributes:
-    cruise_speed: float = 13.0
-    max_speed: float = 20.0
+    cruise_speed: float = 14.25
+    max_speed: float = 18.0
     forward_accel: float = 1.0
     turn_accel: float = 1.0
     cornering_grip: float = 1.0
     stamina: float = 100.0
     stamina_recovery: float = 1.0
-    weight: float = 500.0
+    weight: float = 490.0
     pushing_power: float = 0.5
     push_resistance: float = 0.5
 

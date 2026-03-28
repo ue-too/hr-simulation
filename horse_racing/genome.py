@@ -100,9 +100,16 @@ def breed(sire: HorseGenome, dam: HorseGenome, mutation_rate: float = 0.05) -> H
 
 
 def default_genome() -> HorseGenome:
+    from horse_racing.modifiers import MODIFIER_REGISTRY
+
     genome = HorseGenome()
     for trait in TRAIT_RANGES:
         genome.core[trait] = Gene(sire=0.5, dam=0.5)
+    for mod_id in MODIFIER_REGISTRY:
+        genome.modifiers[mod_id] = (
+            Gene(sire=0.5, dam=0.5),  # presence
+            Gene(sire=0.5, dam=0.5),  # strength
+        )
     return genome
 
 

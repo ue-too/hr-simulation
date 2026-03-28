@@ -1,5 +1,7 @@
 """Tests for the horse racing engine."""
 
+import json
+
 import numpy as np
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
@@ -70,7 +72,7 @@ def test_engine_obs_to_array():
 
     obs = engine.get_observations()
     arr = engine.obs_to_array(obs[0])
-    assert arr.shape == (18,)
+    assert arr.shape == (26,)
     assert arr.dtype == np.float32
 
 
@@ -105,3 +107,23 @@ def test_engine_custom_horse_count():
     config = EngineConfig(horse_count=2)
     engine = HorseRacingEngine(SIMPLE_OVAL, config=config)
     assert len(engine.horses) == 2
+
+
+def test_obs_array_matches_schema():
+    """Verify obs_to_array() output matches the shared obs_schema.json."""
+    with open("obs_schema.json") as f:
+        schema = json.load(f)
+
+    engine = HorseRacingEngine(SIMPLE_OVAL)
+    actions = [HorseAction() for _ in range(HORSE_COUNT)]
+    engine.step(actions)
+
+    obs = engine.get_observations()
+    arr = engine.obs_to_array(obs[0])
+
+    assert arr.shape == (schema["size"],), (
+        f"obs_to_array size {arr.shape[0]} != schema size {schema['size']}"
+    )
+    assert len(schema["fields"]) == schema["size"], (
+        f"Schema field count {len(schema['fields'])} != declared size {schema['size']}"
+    )

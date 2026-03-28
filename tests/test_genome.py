@@ -35,10 +35,10 @@ def test_express_core_trait_max():
 def test_default_genome_gives_midpoint_attributes():
     genome = default_genome()
     attrs = express_genome(genome)
-    # midpoint of cruise_speed: (8+18)/2 = 13
-    assert abs(attrs.cruise_speed - 13.0) < 0.01
-    # midpoint of weight: (400+600)/2 = 500
-    assert abs(attrs.weight - 500.0) < 0.01
+    # midpoint of cruise_speed: (12+16.5)/2 = 14.25
+    assert abs(attrs.cruise_speed - 14.25) < 0.01
+    # midpoint of weight: (430+550)/2 = 490
+    assert abs(attrs.weight - 490.0) < 0.01
 
 
 def test_modifier_presence():

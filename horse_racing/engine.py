@@ -16,7 +16,7 @@ from horse_racing.genome import (
     modifier_is_present,
     modifier_strength,
 )
-from horse_racing.modifiers import ActiveModifier, ModifierContext, MODIFIER_REGISTRY
+from horse_racing.modifiers import ActiveModifier, MODIFIER_IDS, ModifierContext, MODIFIER_REGISTRY
 from horse_racing.physics import integrate, resolve_all_collisions, resolve_horse_collisions, resolve_wall_collisions
 from horse_racing.stamina import HorseRuntimeState, apply_exhaustion, update_stamina
 from horse_racing.track import load_track
@@ -28,6 +28,7 @@ from horse_racing.types import (
     NORMAL_DAMP,
     PHYS_HZ,
     PHYS_SUBSTEPS,
+    CurveSegment,
     HorseAction,
     HorseBody,
     TrackFrame,
@@ -295,6 +296,15 @@ class HorseRacingEngine:
             displacement = frame.turn_radius - frame.target_radius if frame.turn_radius < 1e6 else 0.0
             curvature = 1.0 / frame.turn_radius if frame.turn_radius < 1e6 else 0.0
 
+            # Path efficiency: on curves, inner line covers less ground per
+            # unit of angular progress.  seg.radius / actual_radius gives the
+            # ratio of centerline arc to the horse's real arc (< 1 when wide).
+            seg = self.segments[hs.navigator.segment_index]
+            if isinstance(seg, CurveSegment) and frame.turn_radius < 1e6:
+                path_efficiency = seg.radius / max(frame.turn_radius, 1e-6)
+            else:
+                path_efficiency = 1.0
+
             stamina_ratio = (
                 hs.runtime.current_stamina / hs.base_attrs.stamina
                 if hs.base_attrs.stamina > 1e-6
@@ -339,9 +349,13 @@ class HorseRacingEngine:
                     "rel_horse_2": (relatives[1][1], relatives[1][2]),
                     "rel_horse_3": (relatives[2][1], relatives[2][2]),
                     "cornering_margin": cornering_margin,
+                    "path_efficiency": path_efficiency,
                     "slope": frame.slope,
                     "pushing_power": hs.effective_attrs.pushing_power,
                     "push_resistance": hs.effective_attrs.push_resistance,
+                    "active_modifiers": {
+                        m.id for m in hs.runtime.active_modifiers
+                    },
                     "collision": hs.collision_this_tick,
                     "finished": hs.finished,
                 }
@@ -366,7 +380,12 @@ class HorseRacingEngine:
         return placements
 
     def obs_to_array(self, obs: dict) -> np.ndarray:
-        """Convert observation dict to flat numpy array (18,)."""
+        """Convert observation dict to flat numpy array (26,).
+
+        Layout: 18 continuous features + 8 binary modifier flags.
+        """
+        active = obs.get("active_modifiers", set())
+        modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
         return np.array(
             [
                 obs["tangential_vel"],
@@ -387,6 +406,7 @@ class HorseRacingEngine:
                 obs["slope"],
                 obs["pushing_power"],
                 obs["push_resistance"],
+                *modifier_flags,
             ],
             dtype=np.float32,
         )

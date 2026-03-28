@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,37 @@ import numpy as np
 
 from horse_racing.engine import HorseRacingEngine
 from horse_racing.types import HORSE_COUNT, HorseAction
+
+
+def validate_obs_schema(schema_path: str | Path = "obs_schema.json") -> None:
+    """Verify Python obs_to_array matches the shared observation schema.
+
+    Raises AssertionError on mismatch. Call from CI or pre-commit to catch
+    drift between Python and browser observation vectors.
+    """
+    from horse_racing.modifiers import MODIFIER_IDS
+
+    with open(schema_path) as f:
+        schema = json.load(f)
+
+    engine = HorseRacingEngine("tracks/simple_oval.json")
+    engine.step([HorseAction() for _ in range(HORSE_COUNT)])
+    obs = engine.get_observations()
+    arr = engine.obs_to_array(obs[0])
+
+    assert arr.shape[0] == schema["size"], (
+        f"Python obs size {arr.shape[0]} != schema size {schema['size']}"
+    )
+
+    # Verify modifier IDs in schema match Python MODIFIER_IDS order
+    schema_mod_fields = [
+        f["name"].removeprefix("mod_")
+        for f in schema["fields"]
+        if f["name"].startswith("mod_")
+    ]
+    assert schema_mod_fields == MODIFIER_IDS, (
+        f"Schema modifier order {schema_mod_fields} != Python {MODIFIER_IDS}"
+    )
 
 
 @dataclass

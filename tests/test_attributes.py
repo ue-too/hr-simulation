@@ -6,8 +6,8 @@ from horse_racing.modifiers import ActiveModifier
 
 def test_default_attributes():
     attrs = CoreAttributes()
-    assert attrs.cruise_speed == 13.0
-    assert attrs.weight == 500.0
+    assert attrs.cruise_speed == 14.25
+    assert attrs.weight == 490.0
 
 
 def test_resolve_no_modifiers():
@@ -18,13 +18,13 @@ def test_resolve_no_modifiers():
 
 
 def test_resolve_flat_modifier():
-    base = CoreAttributes(cruise_speed=13.0)
-    # front_runner gives flat +1.5 to cruise_speed at full strength
+    base = CoreAttributes(cruise_speed=14.25)
+    # front_runner gives flat +0.7 to cruise_speed at full strength
     active = [ActiveModifier(id="front_runner", strength=1.0)]
     result = resolve_effective(base, active)
     assert result.cruise_speed > base.cruise_speed
-    # 13.0 + 1.5 * 1.0 = 14.5
-    assert abs(result.cruise_speed - 14.5) < 0.01
+    # 14.25 + 0.7 * 1.0 = 14.95
+    assert abs(result.cruise_speed - 14.95) < 0.01
 
 
 def test_resolve_pct_modifier():
@@ -36,8 +36,8 @@ def test_resolve_pct_modifier():
 
 
 def test_resolve_clamps_to_range():
-    base = CoreAttributes(cruise_speed=17.5)
-    # front_runner flat +1.5, could push to 19.0 but max is 18.0
+    base = CoreAttributes(cruise_speed=16.0)
+    # front_runner flat +1.5, could push to 17.5 but max is 16.5
     active = [ActiveModifier(id="front_runner", strength=1.0)]
     result = resolve_effective(base, active)
     assert result.cruise_speed <= TRAIT_RANGES["cruise_speed"][1]

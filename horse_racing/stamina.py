@@ -47,12 +47,16 @@ def update_stamina(
         if required_force > tolerated_force:
             drain += (required_force - tolerated_force) * CORNERING_DRAIN_RATE
 
-    # Recovery (only when not draining)
-    if drain == 0:
-        recovery = eff.stamina_recovery
-        state.current_stamina = min(eff.stamina, state.current_stamina + recovery)
+    # Recovery: always applies, but reduced when draining (prevents
+    # binary on/off exploit where agent alternates push/coast ticks).
+    if drain > 0:
+        net = drain - eff.stamina_recovery * 0.25
+        if net > 0:
+            state.current_stamina = max(0, state.current_stamina - net)
+        else:
+            state.current_stamina = min(eff.stamina, state.current_stamina - net)
     else:
-        state.current_stamina = max(0, state.current_stamina - drain)
+        state.current_stamina = min(eff.stamina, state.current_stamina + eff.stamina_recovery)
 
     return state.current_stamina
 

@@ -142,6 +142,12 @@ def cond_endurance(ctx: ModifierContext) -> bool:
 # Registry of the 8 built-in modifiers
 # ---------------------------------------------------------------------------
 
+# Canonical ordered list of modifier IDs (used for observation vector)
+MODIFIER_IDS: list[str] = [
+    "drafting", "pack_pressure", "pack_anxiety", "front_runner",
+    "closer", "mudder", "gate_speed", "endurance",
+]
+
 MODIFIER_REGISTRY: dict[str, ModifierDefinition] = {
     "drafting": ModifierDefinition(
         id="drafting",
@@ -165,7 +171,7 @@ MODIFIER_REGISTRY: dict[str, ModifierDefinition] = {
         id="front_runner",
         description="Performs better when leading",
         condition=cond_front_runner,
-        effects=[ModifierEffect(target="cruise_speed", flat=1.5)],  # 0.5-1.5
+        effects=[ModifierEffect(target="cruise_speed", flat=0.7)],  # 0.2-0.7
     ),
     "closer": ModifierDefinition(
         id="closer",

@@ -52,7 +52,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
 
         # Per-agent space (singular — what each agent sees/does)
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32,
+            low=-np.inf, high=np.inf, shape=(26,), dtype=np.float32,
         )
         self.action_space = spaces.Box(
             low=np.array([-10.0, -5.0], dtype=np.float32),

@@ -45,7 +45,7 @@ class HorseRacingEnv(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent: str) -> spaces.Space:
-        return spaces.Box(low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32)
+        return spaces.Box(low=-np.inf, high=np.inf, shape=(26,), dtype=np.float32)
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent: str) -> spaces.Space:

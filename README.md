@@ -29,6 +29,28 @@ Start the JS validation server at `http://localhost:3456`, then:
 uv run python scripts/validate.py --track tracks/simple_oval.json --steps 1000
 ```
 
+## Observation Vector Sync (Python ↔ Browser)
+
+The Python training code and browser ONNX inference must build identical observation
+vectors. A shared schema at `obs_schema.json` defines the canonical layout.
+
+### Workflow for changing the observation vector
+
+1. **Update `obs_schema.json` first** — add/remove/reorder fields, bump the `version`.
+2. **Update Python** — edit `engine.py:obs_to_array()` to match the new schema.
+   Update `env.py`, `multi_agent_env.py`, `rllib_env.py` observation space shapes.
+3. **Update browser** — edit `ai-jockey.ts:observationToArray()` to match.
+   Update tensor shapes in `AIJockey` and `AIJockeyManager`.
+   If new fields were added to `HorseObservation`, update the type and the
+   observation build in `horse-racing-engine.ts`.
+4. **Update ONNX export scripts** — `scripts/export_onnx*.py` dummy input dimensions.
+5. **Run tests** — `uv run pytest` verifies `test_obs_array_matches_schema` passes.
+
+Key files:
+- `obs_schema.json` — single source of truth for field order and count
+- `horse_racing/engine.py:obs_to_array()` — Python observation builder
+- Browser: `src/simulation/ai-jockey.ts:observationToArray()` — browser observation builder
+
 ## Project Structure
 
 - `horse_racing/` — Core simulation package
