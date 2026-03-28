@@ -1,4 +1,4 @@
-"""Reward function module — tuned for competitive racing with speed incentives."""
+"""Reward function module — tuned for competitive racing with finish incentives."""
 
 from __future__ import annotations
 
@@ -29,9 +29,12 @@ def compute_reward(
         Scalar reward.
     """
     reward = 0.0
+    progress = obs_curr["track_progress"]
 
-    # Forward progress — dominant signal
-    reward += 1000.0 * (obs_curr["track_progress"] - obs_prev["track_progress"])
+    # Forward progress — accelerating reward: per-meter reward increases
+    # as horse approaches finish (1x at start → 3x near finish)
+    delta_progress = progress - obs_prev["track_progress"]
+    reward += 1000.0 * delta_progress * (1.0 + 2.0 * progress)
 
     # Speed bonus — rewards going fast relative to max capability
     max_spd = obs_curr["effective_max_speed"]
@@ -44,8 +47,14 @@ def compute_reward(
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
         reward += 0.2 * (vel - cruise_spd) / (max_spd - cruise_spd)
 
-    # Alive penalty — creates time pressure to finish faster
-    reward -= 0.1
+    # Alive penalty — decreasing as horse progresses
+    # At 0% progress: -0.05 per step. At 100%: ~0 per step.
+    # This avoids punishing the horse for being near the finish.
+    reward -= 0.05 * (1.0 - progress)
+
+    # Near-finish bonus — extra incentive in the final stretch
+    if progress > 0.9:
+        reward += 0.5
 
     # Placement bonus — per-tick incentive to be ahead of others
     if num_horses > 1:

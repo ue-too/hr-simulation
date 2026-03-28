@@ -13,10 +13,10 @@ from horse_racing.env import HorseRacingSingleEnv
 
 
 CURRICULUM = [
-    {"track": "tracks/curriculum_1_straight.json", "timesteps": 500_000, "name": "Stage 1: Straight"},
-    {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 1_000_000, "name": "Stage 2: Gentle oval"},
-    {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 1_000_000, "name": "Stage 3: Tight oval"},
-    {"track": "tracks/exp_track_8.json", "timesteps": 2_000_000, "name": "Stage 4: Complex track"},
+    {"track": "tracks/curriculum_1_straight.json", "timesteps": 500_000, "max_steps": 1500, "name": "Stage 1: Straight"},
+    {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 1_000_000, "max_steps": 3000, "name": "Stage 2: Gentle oval"},
+    {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 1_000_000, "max_steps": 2000, "name": "Stage 3: Tight oval"},
+    {"track": "tracks/exp_track_8.json", "timesteps": 2_000_000, "max_steps": 5000, "name": "Stage 4: Complex track"},
 ]
 
 
@@ -71,7 +71,8 @@ def main() -> None:
         print(f"Timesteps: {stage['timesteps']:,}")
         print(f"{'='*60}\n")
 
-        env = DummyVecEnv([make_env(stage["track"], args.max_steps) for _ in range(args.n_envs)])
+        stage_max_steps = stage.get("max_steps", args.max_steps)
+        env = DummyVecEnv([make_env(stage["track"], stage_max_steps) for _ in range(args.n_envs)])
 
         if model is None and args.resume:
             print(f"Resuming from {args.resume}")
