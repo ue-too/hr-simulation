@@ -11,6 +11,9 @@ dependencies = [
     "stable-baselines3>=2.3.0",
     "supersuit>=3.9.0",
     "httpx>=0.27.0",
+    "onnx>=1.21.0",
+    "onnxruntime>=1.24.4",
+    "onnxscript>=0.6.2",
 ]
 
 [project.optional-dependencies]
