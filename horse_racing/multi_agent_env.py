@@ -90,12 +90,19 @@ class HorseRacingEnv(ParallelEnv):
         truncated = {}
         infos = {}
 
+        placements = self.engine.get_placements()
         for i, agent in enumerate(self.agents):
             obs_curr = all_obs[i]
             observations[agent] = self.engine.obs_to_array(obs_curr)
 
             prev = self._prev_obs.get(agent, obs_curr)
-            rewards[agent] = compute_reward(prev, obs_curr, obs_curr["collision"])
+            finish_order = placements[i] if obs_curr["finished"] else None
+            rewards[agent] = compute_reward(
+                prev, obs_curr, obs_curr["collision"],
+                placement=placements[i],
+                num_horses=self._config.horse_count,
+                finish_order=finish_order,
+            )
             terminated[agent] = obs_curr["finished"]
             truncated[agent] = self._step_count >= self.max_steps
             infos[agent] = {}

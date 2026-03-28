@@ -353,6 +353,18 @@ class HorseRacingEngine:
 
         return obs_list
 
+    def get_placements(self) -> list[int]:
+        """Return 1-indexed placement for each horse based on track progress.
+
+        1 = first place (highest progress), N = last place.
+        """
+        progresses = [(i, hs.track_progress) for i, hs in enumerate(self.horses)]
+        progresses.sort(key=lambda x: -x[1])  # highest progress first
+        placements = [0] * len(self.horses)
+        for rank, (idx, _) in enumerate(progresses):
+            placements[idx] = rank + 1
+        return placements
+
     def obs_to_array(self, obs: dict) -> np.ndarray:
         """Convert observation dict to flat numpy array (18,)."""
         return np.array(

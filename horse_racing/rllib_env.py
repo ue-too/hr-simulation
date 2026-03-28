@@ -104,6 +104,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         infos = {}
 
         any_truncated = self._step_count >= self.max_steps
+        placements = self.engine.get_placements()
 
         for i in range(self.horse_count):
             agent_id = f"horse_{i}"
@@ -115,7 +116,13 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
             observations[agent_id] = self.engine.obs_to_array(obs_curr)
 
             prev = self._prev_obs.get(agent_id, obs_curr)
-            rewards[agent_id] = compute_reward(prev, obs_curr, obs_curr["collision"])
+            finish_order = placements[i] if obs_curr["finished"] else None
+            rewards[agent_id] = compute_reward(
+                prev, obs_curr, obs_curr["collision"],
+                placement=placements[i],
+                num_horses=self.horse_count,
+                finish_order=finish_order,
+            )
             terminateds[agent_id] = obs_curr["finished"]
             truncateds[agent_id] = any_truncated
             infos[agent_id] = {}

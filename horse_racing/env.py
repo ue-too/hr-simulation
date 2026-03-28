@@ -72,7 +72,14 @@ class HorseRacingSingleEnv(gym.Env):
         obs_curr = all_obs[0]
         obs_array = self.engine.obs_to_array(obs_curr)
 
-        reward = compute_reward(self._prev_obs, obs_curr, obs_curr["collision"])
+        placements = self.engine.get_placements()
+        finish_order = placements[0] if obs_curr["finished"] else None
+        reward = compute_reward(
+            self._prev_obs, obs_curr, obs_curr["collision"],
+            placement=placements[0],
+            num_horses=self.engine.horse_count,
+            finish_order=finish_order,
+        )
 
         terminated = obs_curr["finished"]
         truncated = self._step_count >= self.max_steps
