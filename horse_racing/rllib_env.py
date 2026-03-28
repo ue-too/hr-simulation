@@ -33,6 +33,8 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
 
         self.track_path = config.get("track_path", "tracks/exp_track_8.json")
         self.max_steps = config.get("max_steps", 5000)
+        # Per-agent archetype: {"horse_0": "front_runner", "horse_1": "stalker", ...}
+        self.archetypes: dict[str, str | None] = config.get("archetypes", {})
 
         engine_config = EngineConfig(
             horse_count=config.get("horse_count", 4),
@@ -117,11 +119,13 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
 
             prev = self._prev_obs.get(agent_id, obs_curr)
             finish_order = placements[i] if obs_curr["finished"] else None
+            archetype = self.archetypes.get(agent_id)
             rewards[agent_id] = compute_reward(
                 prev, obs_curr, obs_curr["collision"],
                 placement=placements[i],
                 num_horses=self.horse_count,
                 finish_order=finish_order,
+                archetype=archetype,
             )
             terminateds[agent_id] = obs_curr["finished"]
             truncateds[agent_id] = any_truncated

@@ -1,0 +1,74 @@
+{
+  "source": "HKJC Racing Dataset (Kaggle: gdaley/hkracing)",
+  "total_profiles": 79447,
+  "archetypes": {
+    "0": {
+      "label": "closer",
+      "count": 23825,
+      "win_rate": 0.0318,
+      "pace_profile": {
+        "speed_q1": 0.9638,
+        "speed_q2": 1.0243,
+        "speed_q3": 1.025,
+        "speed_q4": 1.0253
+      },
+      "position_profile": {
+        "pos_q1": 0.7603,
+        "pos_q2": 0.7659,
+        "pos_q3": 0.7496,
+        "pos_q4": 0.6553
+      }
+    },
+    "1": {
+      "label": "front_runner",
+      "count": 24180,
+      "win_rate": 0.1298,
+      "pace_profile": {
+        "speed_q1": 0.9764,
+        "speed_q2": 1.0242,
+        "speed_q3": 1.019,
+        "speed_q4": 1.014
+      },
+      "position_profile": {
+        "pos_q1": 0.2449,
+        "pos_q2": 0.239,
+        "pos_q3": 0.2545,
+        "pos_q4": 0.347
+      }
+    },
+    "2": {
+      "label": "presser",
+      "count": 15562,
+      "win_rate": 0.0316,
+      "pace_profile": {
+        "speed_q1": 1.2082,
+        "speed_q2": 0.9138,
+        "speed_q3": 0.8558,
+        "speed_q4": 0.8482
+      },
+      "position_profile": {
+        "pos_q1": 0.7563,
+        "pos_q2": 0.7654,
+        "pos_q3": 0.7588,
+        "pos_q4": 0.6606
+      }
+    },
+    "3": {
+      "label": "front_runner_3",
+      "count": 15880,
+      "win_rate": 0.1242,
+      "pace_profile": {
+        "speed_q1": 1.2256,
+        "speed_q2": 0.9125,
+        "speed_q3": 0.846,
+        "speed_q4": 0.8336
+      },
+      "position_profile": {
+        "pos_q1": 0.2505,
+        "pos_q2": 0.2414,
+        "pos_q3": 0.2475,
+        "pos_q4": 0.3429
+      }
+    }
+  }
+}
