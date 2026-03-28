@@ -32,9 +32,10 @@ def main() -> None:
         tolerance=args.tolerance,
     )
 
-    print(f"Max divergence:  {result.max_divergence:.6f} (step {result.max_divergence_step}, horse {result.max_divergence_horse})")
-    print(f"Mean divergence: {result.mean_divergence:.6f}")
-    print(f"Result:          {'PASS' if result.passed else 'FAIL'}")
+    print(f"Position max divergence:  {result.max_divergence:.6f} (step {result.max_divergence_step}, horse {result.max_divergence_horse})")
+    print(f"Position mean divergence: {result.mean_divergence:.6f}")
+    print(f"Stamina max divergence:   {result.max_stamina_divergence:.6f} (step {result.max_stamina_step}, horse {result.max_stamina_horse})")
+    print(f"Result:                   {'PASS' if result.passed else 'FAIL'}")
 
 
 if __name__ == "__main__":

@@ -50,6 +50,9 @@ class ValidationResult:
     max_divergence_step: int
     max_divergence_horse: int
     mean_divergence: float
+    max_stamina_divergence: float
+    max_stamina_step: int
+    max_stamina_horse: int
     passed: bool  # within tolerance
 
 
@@ -57,12 +60,13 @@ def run_python_engine(
     track_path: str | Path,
     actions: list[list[HorseAction]],
 ) -> list[list[dict]]:
-    """Run actions through the Python engine and return per-step, per-horse positions."""
+    """Run actions through the Python engine and return per-step, per-horse state."""
     engine = HorseRacingEngine(track_path)
     trajectories: list[list[dict]] = []
 
     for step_actions in actions:
         engine.step(step_actions)
+        obs = engine.get_observations()
         trajectories.append(
             [
                 {
@@ -70,8 +74,15 @@ def run_python_engine(
                     "y": float(hs.body.position[1]),
                     "vx": float(hs.body.velocity[0]),
                     "vy": float(hs.body.velocity[1]),
+                    "currentStamina": hs.runtime.current_stamina,
+                    "effectiveCruiseSpeed": hs.effective_attrs.cruise_speed,
+                    "effectiveMaxSpeed": hs.effective_attrs.max_speed,
+                    "trackProgress": hs.track_progress,
+                    "activeModifierIds": sorted(
+                        m.id for m in hs.runtime.active_modifiers
+                    ),
                 }
-                for hs in engine.horses
+                for hs, o in zip(engine.horses, obs)
             ]
         )
 
@@ -119,11 +130,14 @@ def validate_trajectory(
     # Query JS server
     js_trajectories = query_js_server(js_server_url, track_name, js_actions, len(actions))
 
-    # Compare
+    # Compare position and stamina
     max_divergence = 0.0
     max_step = 0
     max_horse = 0
     total_divergence = 0.0
+    max_stamina_div = 0.0
+    max_stamina_step = 0
+    max_stamina_horse = 0
     count = 0
 
     num_steps = min(len(py_trajectories), len(js_trajectories))
@@ -132,6 +146,8 @@ def validate_trajectory(
         for horse in range(num_horses):
             py = py_trajectories[step][horse]
             js = js_trajectories[step][horse]
+
+            # Position divergence
             dx = py["x"] - js["x"]
             dy = py["y"] - js["y"]
             dist = (dx**2 + dy**2) ** 0.5
@@ -144,6 +160,15 @@ def validate_trajectory(
                 max_step = step
                 max_horse = horse
 
+            # Stamina divergence
+            stamina_diff = abs(
+                py.get("currentStamina", 0) - js.get("currentStamina", 0)
+            )
+            if stamina_diff > max_stamina_div:
+                max_stamina_div = stamina_diff
+                max_stamina_step = step
+                max_stamina_horse = horse
+
     mean_divergence = total_divergence / count if count > 0 else 0.0
 
     return ValidationResult(
@@ -151,7 +176,10 @@ def validate_trajectory(
         max_divergence_step=max_step,
         max_divergence_horse=max_horse,
         mean_divergence=mean_divergence,
-        passed=max_divergence <= tolerance,
+        max_stamina_divergence=max_stamina_div,
+        max_stamina_step=max_stamina_step,
+        max_stamina_horse=max_stamina_horse,
+        passed=max_divergence <= tolerance and max_stamina_div <= tolerance,
     )
 
 
