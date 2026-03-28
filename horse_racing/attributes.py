@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from horse_racing.modifiers import ActiveModifier
 
 # ---------------------------------------------------------------------------
-# Core attributes (8 traits)
+# Core attributes (10 traits)
 # ---------------------------------------------------------------------------
 
 TRAIT_RANGES: dict[str, tuple[float, float]] = {
@@ -22,6 +22,8 @@ TRAIT_RANGES: dict[str, tuple[float, float]] = {
     "stamina": (50.0, 150.0),
     "stamina_recovery": (0.5, 2.0),
     "weight": (400.0, 600.0),
+    "pushing_power": (0.0, 1.0),
+    "push_resistance": (0.0, 1.0),
 }
 
 TRAIT_NAMES: list[str] = list(TRAIT_RANGES.keys())
@@ -37,6 +39,8 @@ class CoreAttributes:
     stamina: float = 100.0
     stamina_recovery: float = 1.0
     weight: float = 500.0
+    pushing_power: float = 0.5
+    push_resistance: float = 0.5
 
     def to_dict(self) -> dict[str, float]:
         return asdict(self)

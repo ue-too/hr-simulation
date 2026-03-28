@@ -185,7 +185,9 @@ class HorseRacingEngine:
             # b. Collision resolution (before integration, matching JS)
             bodies = [hs.body for hs in self.horses]
             masses = [hs.effective_attrs.weight for hs in self.horses]
-            collided = resolve_horse_collisions(bodies, masses)
+            pushing_powers = [hs.effective_attrs.pushing_power for hs in self.horses]
+            push_resistances = [hs.effective_attrs.push_resistance for hs in self.horses]
+            collided = resolve_horse_collisions(bodies, masses, pushing_powers, push_resistances)
             resolve_wall_collisions(
                 bodies,
                 self.segments,
@@ -338,6 +340,8 @@ class HorseRacingEngine:
                     "rel_horse_3": (relatives[2][1], relatives[2][2]),
                     "cornering_margin": cornering_margin,
                     "slope": frame.slope,
+                    "pushing_power": hs.effective_attrs.pushing_power,
+                    "push_resistance": hs.effective_attrs.push_resistance,
                     "collision": hs.collision_this_tick,
                     "finished": hs.finished,
                 }
@@ -350,7 +354,7 @@ class HorseRacingEngine:
         return obs_list
 
     def obs_to_array(self, obs: dict) -> np.ndarray:
-        """Convert observation dict to flat numpy array (16,)."""
+        """Convert observation dict to flat numpy array (18,)."""
         return np.array(
             [
                 obs["tangential_vel"],
@@ -369,6 +373,8 @@ class HorseRacingEngine:
                 obs["rel_horse_3"][1],
                 min(obs["cornering_margin"], 1000.0),  # cap inf
                 obs["slope"],
+                obs["pushing_power"],
+                obs["push_resistance"],
             ],
             dtype=np.float32,
         )

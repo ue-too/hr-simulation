@@ -12,7 +12,7 @@ SIMPLE_OVAL = "tracks/simple_oval.json"
 def test_single_env_reset():
     env = HorseRacingSingleEnv(track_path=SIMPLE_OVAL)
     obs, info = env.reset()
-    assert obs.shape == (16,)
+    assert obs.shape == (18,)
     assert isinstance(info, dict)
 
 
@@ -21,7 +21,7 @@ def test_single_env_step():
     env.reset()
     action = np.array([2.0, 0.0], dtype=np.float32)
     obs, reward, terminated, truncated, info = env.step(action)
-    assert obs.shape == (16,)
+    assert obs.shape == (18,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
@@ -39,7 +39,7 @@ def test_multi_agent_env_reset():
     observations, infos = env.reset()
     assert len(observations) == 4
     for agent in env.possible_agents:
-        assert observations[agent].shape == (16,)
+        assert observations[agent].shape == (18,)
 
 
 def test_multi_agent_env_step():
@@ -53,7 +53,7 @@ def test_multi_agent_env_step():
     observations, rewards, terminated, truncated, infos = env.step(actions)
     assert len(observations) > 0
     for agent in observations:
-        assert observations[agent].shape == (16,)
+        assert observations[agent].shape == (18,)
 
 
 def test_multi_agent_env_agents():

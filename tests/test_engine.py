@@ -70,7 +70,7 @@ def test_engine_obs_to_array():
 
     obs = engine.get_observations()
     arr = engine.obs_to_array(obs[0])
-    assert arr.shape == (16,)
+    assert arr.shape == (18,)
     assert arr.dtype == np.float32
 
 

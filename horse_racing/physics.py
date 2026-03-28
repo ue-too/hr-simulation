@@ -37,16 +37,31 @@ def integrate(body: HorseBody, mass: float, dt: float) -> None:
 # ---------------------------------------------------------------------------
 
 
-def resolve_horse_collisions(bodies: list[HorseBody], masses: list[float]) -> list[bool]:
+def resolve_horse_collisions(
+    bodies: list[HorseBody],
+    masses: list[float],
+    pushing_powers: list[float] | None = None,
+    push_resistances: list[float] | None = None,
+) -> list[bool]:
     """Resolve circle-circle collisions between all horse pairs.
 
     Matches JS engine: fixed 50/50 position correction, restitution=0.4,
     impulse always applied (even when not approaching).
 
+    Pushing power and push resistance scale effective mass for collision
+    impulse only (not position correction or normal physics).
+
     Returns a list of booleans indicating which horses were involved in a collision.
     """
     n = len(bodies)
     collided = [False] * n
+
+    # Compute effective collision masses
+    collision_masses = []
+    for i in range(n):
+        pp = pushing_powers[i] if pushing_powers else 0.5
+        pr = push_resistances[i] if push_resistances else 0.5
+        collision_masses.append(masses[i] * (1.0 + pp) * (1.0 + pr))
 
     for i in range(n):
         for j in range(i + 1, n):
@@ -65,14 +80,13 @@ def resolve_horse_collisions(bodies: list[HorseBody], masses: list[float]) -> li
                 bodies[i].position -= normal * (overlap / 2)
                 bodies[j].position += normal * (overlap / 2)
 
-                # Velocity impulse — always applied (JS engine has no approach check)
-                # normal points from i to j; relative velocity = A - B in JS convention
+                # Velocity impulse using effective collision mass
                 rel_vel = bodies[i].velocity - bodies[j].velocity
                 vel_along_normal = float(np.dot(rel_vel, normal))
 
                 e = 0.4  # restitution matches JS engine
-                inv_mass_i = 1.0 / masses[i]
-                inv_mass_j = 1.0 / masses[j]
+                inv_mass_i = 1.0 / collision_masses[i]
+                inv_mass_j = 1.0 / collision_masses[j]
                 j_impulse = -(1 + e) * vel_along_normal / (inv_mass_i + inv_mass_j)
 
                 bodies[i].velocity += normal * (j_impulse * inv_mass_i)

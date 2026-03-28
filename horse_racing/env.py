@@ -41,7 +41,7 @@ class HorseRacingSingleEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
-            shape=(16,),
+            shape=(18,),
             dtype=np.float32,
         )
 
