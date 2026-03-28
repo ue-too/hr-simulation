@@ -1,4 +1,10 @@
-"""Curriculum training — progressively harder tracks with transfer learning."""
+"""Curriculum training — progressively harder tracks with transfer learning.
+
+Trains a single shared policy using SB3 PPO. This produces a solid baseline
+model that races clean lines and manages stamina. The exported ONNX model
+can be used directly in the browser or as a starting point for archetype
+specialization with RLlib.
+"""
 
 from __future__ import annotations
 
@@ -13,10 +19,10 @@ from horse_racing.env import HorseRacingSingleEnv
 
 
 CURRICULUM = [
-    {"track": "tracks/curriculum_1_straight.json", "timesteps": 500_000, "max_steps": 1500, "name": "Stage 1: Straight"},
-    {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 1_000_000, "max_steps": 3000, "name": "Stage 2: Gentle oval"},
-    {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 1_000_000, "max_steps": 2000, "name": "Stage 3: Tight oval"},
-    {"track": "tracks/exp_track_8.json", "timesteps": 2_000_000, "max_steps": 5000, "name": "Stage 4: Complex track"},
+    {"track": "tracks/curriculum_1_straight.json", "timesteps": 1_000_000, "max_steps": 1500, "name": "Stage 1: Straight"},
+    {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 2_000_000, "max_steps": 3000, "name": "Stage 2: Gentle oval"},
+    {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 2_000_000, "max_steps": 3000, "name": "Stage 3: Tight oval"},
+    {"track": "tracks/exp_track_8.json", "timesteps": 4_000_000, "max_steps": 5000, "name": "Stage 4: Complex track"},
 ]
 
 
@@ -49,8 +55,7 @@ def make_env(track_path: str, max_steps: int):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Curriculum training for horse racing")
     parser.add_argument("--n-envs", type=int, default=4)
-    parser.add_argument("--max-steps", type=int, default=2000, help="Max steps per episode")
-    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
+    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints/baseline")
     parser.add_argument("--start-stage", type=int, default=1, help="Start from this stage (1-indexed)")
     parser.add_argument("--resume", type=str, default=None, help="Resume from this model path")
     args = parser.parse_args()
@@ -71,7 +76,7 @@ def main() -> None:
         print(f"Timesteps: {stage['timesteps']:,}")
         print(f"{'='*60}\n")
 
-        stage_max_steps = stage.get("max_steps", args.max_steps)
+        stage_max_steps = stage.get("max_steps", 5000)
         env = DummyVecEnv([make_env(stage["track"], stage_max_steps) for _ in range(args.n_envs)])
 
         if model is None and args.resume:
@@ -107,10 +112,52 @@ def main() -> None:
 
         env.close()
 
-    # Export final ONNX
+    # Export ONNX
+    print(f"\n{'='*60}")
+    print("Exporting to ONNX...")
+    print(f"{'='*60}\n")
+
+    import torch
+    import torch.nn as nn
+
+    class PolicyNetwork(nn.Module):
+        def __init__(self, sb3_policy):
+            super().__init__()
+            self.features_extractor = sb3_policy.features_extractor
+            self.mlp_extractor = sb3_policy.mlp_extractor
+            self.action_net = sb3_policy.action_net
+
+        def forward(self, obs: torch.Tensor) -> torch.Tensor:
+            features = self.features_extractor(obs)
+            latent_pi, _ = self.mlp_extractor(features)
+            return self.action_net(latent_pi)
+
+    wrapper = PolicyNetwork(model.policy)
+    wrapper.eval()
+    obs_dim = model.observation_space.shape[0]
+    dummy = torch.zeros(1, obs_dim, dtype=torch.float32)
+
+    onnx_path = str(checkpoint_dir / "baseline_jockey.onnx")
+    torch.onnx.export(
+        wrapper, dummy, onnx_path,
+        input_names=["obs"], output_names=["action"],
+        dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
+        opset_version=17, dynamo=False,
+    )
+    print(f"Exported → {onnx_path}")
+
+    # Verify
+    import onnxruntime as ort
+    import numpy as np
+    sess = ort.InferenceSession(onnx_path)
+    test = np.zeros((1, obs_dim), dtype=np.float32)
+    result = sess.run(["action"], {"obs": test})
+    print(f"Verification: input=({1},{obs_dim}) → action={result[0][0]}")
+
     print(f"\n{'='*60}")
     print("Curriculum complete!")
-    print(f"Final model: {checkpoint_dir / 'curriculum_stage_4'}")
+    print(f"Baseline model: {checkpoint_dir / 'curriculum_stage_4'}")
+    print(f"ONNX model: {onnx_path}")
     print(f"{'='*60}")
 
 
