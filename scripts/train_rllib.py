@@ -17,15 +17,28 @@ def main() -> None:
     parser.add_argument("--track", type=str, default="tracks/exp_track_8.json")
     parser.add_argument("--horse-count", type=int, default=4)
     parser.add_argument("--iterations", type=int, default=200, help="Training iterations")
-    parser.add_argument("--num-workers", type=int, default=2, help="Parallel rollout workers")
-    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints/horse_racing_ppo")
+    parser.add_argument("--num-workers", type=int, default=0,
+                        help="Parallel rollout workers (0 = single-process, most stable)")
+    parser.add_argument("--checkpoint-dir", type=str, default=None)
     parser.add_argument("--shared-policy", action="store_true", default=True,
                         help="All horses share one policy (default)")
     parser.add_argument("--per-agent-policy", action="store_true",
                         help="Each horse gets its own policy")
     args = parser.parse_args()
 
-    ray.init()
+    # Resolve checkpoint dir to absolute path (pyarrow requires it)
+    if args.checkpoint_dir is None:
+        import os
+        args.checkpoint_dir = os.path.join(os.getcwd(), "checkpoints", "horse_racing_rllib")
+    else:
+        import os
+        args.checkpoint_dir = os.path.abspath(args.checkpoint_dir)
+
+    # Disable runtime_env so workers use the current Python environment directly.
+    # Without this, Ray packages the working dir (which has pyproject.toml),
+    # uv creates a new venv in the worker temp dir that doesn't include ray,
+    # and workers crash with "ModuleNotFoundError: No module named 'ray'".
+    ray.init(runtime_env={"working_dir": None})
 
     env_config = {
         "track_path": args.track,
@@ -45,8 +58,8 @@ def main() -> None:
         )
         .training(
             train_batch_size=4000,
-            sgd_minibatch_size=256,
-            num_sgd_iter=10,
+            minibatch_size=256,
+            num_epochs=10,
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
@@ -71,7 +84,7 @@ def main() -> None:
             policy_mapping_fn=lambda agent_id, *args, **kwargs: "shared_policy",
         )
 
-    algo = config.build()
+    algo = config.build_algo()
 
     print(f"Training on {args.track} with {args.horse_count} horses")
     print(f"Policy mode: {'per-agent' if args.per_agent_policy else 'shared'}")
@@ -82,15 +95,19 @@ def main() -> None:
     for i in range(args.iterations):
         result = algo.train()
 
-        mean_reward = result["env_runners"]["episode_reward_mean"]
-        episode_len = result["env_runners"]["episode_len_mean"]
+        # Extract metrics — handle different RLlib result formats
+        env_runners = result.get("env_runners", result.get("sampler_results", {}))
+        mean_reward = env_runners.get("episode_reward_mean", 0.0)
+        episode_len = env_runners.get("episode_len_mean", 0.0)
+        timesteps = result.get("num_env_steps_sampled_lifetime",
+                               result.get("timesteps_total", 0))
 
         if (i + 1) % 10 == 0 or i == 0:
             print(
                 f"Iter {i + 1:4d} | "
                 f"reward: {mean_reward:8.2f} | "
                 f"ep_len: {episode_len:7.1f} | "
-                f"timesteps: {result['num_env_steps_sampled_lifetime']}"
+                f"timesteps: {timesteps}"
             )
 
         if mean_reward > best_reward:

@@ -42,9 +42,13 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         self.horse_count = engine_config.horse_count
 
         self._agent_ids = {f"horse_{i}" for i in range(self.horse_count)}
+        # RLlib new API stack requires these PettingZoo-style attributes
+        self.possible_agents = [f"horse_{i}" for i in range(self.horse_count)]
+        self.agents = list(self.possible_agents)
         self._step_count = 0
         self._prev_obs: dict[str, dict] = {}
 
+        # Per-agent space (singular — what each agent sees/does)
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32,
         )
@@ -53,9 +57,19 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
             high=np.array([10.0, 5.0], dtype=np.float32),
         )
 
+        # Per-agent space dicts (plural — required by RLlib new API stack)
+        self.observation_spaces = {
+            f"horse_{i}": self.observation_space for i in range(self.horse_count)
+        }
+        self.action_spaces = {
+            f"horse_{i}": self.action_space for i in range(self.horse_count)
+        }
+
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         self.engine.reset()
         self._step_count = 0
+        self.agents = list(self.possible_agents)
+        self._done_agents: set[str] = set()
 
         all_obs = self.engine.get_observations()
         observations = {}
@@ -89,11 +103,14 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         truncateds = {}
         infos = {}
 
-        any_terminated = False
         any_truncated = self._step_count >= self.max_steps
 
         for i in range(self.horse_count):
             agent_id = f"horse_{i}"
+            # Skip agents that are already done
+            if agent_id in self._done_agents:
+                continue
+
             obs_curr = all_obs[i]
             observations[agent_id] = self.engine.obs_to_array(obs_curr)
 
@@ -104,13 +121,14 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
             infos[agent_id] = {}
             self._prev_obs[agent_id] = obs_curr
 
-            if obs_curr["finished"]:
-                any_terminated = True
+            if obs_curr["finished"] or any_truncated:
+                self._done_agents.add(agent_id)
+
+        # Update active agents list
+        self.agents = [a for a in self.possible_agents if a not in self._done_agents]
 
         # __all__ key signals episode-level done to RLlib
-        terminateds["__all__"] = all(
-            terminateds.get(f"horse_{i}", False) for i in range(self.horse_count)
-        )
+        terminateds["__all__"] = len(self.agents) == 0
         truncateds["__all__"] = any_truncated
 
         return observations, rewards, terminateds, truncateds, infos
