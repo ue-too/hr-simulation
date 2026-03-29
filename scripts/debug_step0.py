@@ -4,7 +4,7 @@ import httpx
 import numpy as np
 
 from horse_racing.engine import HorseRacingEngine
-from horse_racing.types import HORSE_COUNT, HORSE_RADIUS, HorseAction, PHYS_SUBSTEPS, PHYS_HZ
+from horse_racing.types import HORSE_COUNT, HORSE_HALF_LENGTH, HORSE_HALF_WIDTH, HorseAction, PHYS_SUBSTEPS, PHYS_HZ
 from horse_racing.physics import resolve_horse_collisions, resolve_wall_collisions, integrate
 
 
@@ -24,7 +24,7 @@ def main():
     for i in range(HORSE_COUNT):
         for j in range(i + 1, HORSE_COUNT):
             d = np.linalg.norm(engine.horses[j].body.position - engine.horses[i].body.position)
-            overlap = 2 * HORSE_RADIUS - d
+            overlap = 2 * HORSE_HALF_WIDTH - d  # lateral overlap check
             status = f"OVERLAP by {overlap:.3f}" if overlap > 0 else "OK"
             print(f"  ({i},{j}): dist={d:.3f} {status}")
 

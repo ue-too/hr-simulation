@@ -22,7 +22,7 @@ def test_engine_initial_positions_differ():
     for i in range(len(positions)):
         for j in range(i + 1, len(positions)):
             dist = float(np.linalg.norm(positions[i] - positions[j]))
-            assert dist > 1.0, "Horses should start at different positions"
+            assert dist > 0.5, "Horses should start at different positions"
 
 
 def test_engine_step_zero_actions():

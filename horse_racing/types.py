@@ -12,15 +12,23 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 HORSE_COUNT: int = 4
-HORSE_RADIUS: float = 1.3  # ~2.6 m diameter circle wrapping a 2.5 m horse top-down
-HORSE_SPACING: float = 3.0  # 3 m lane spacing (> 2 × radius, no overlap)
+MAX_HORSE_COUNT: int = 20
+
+# Rectangle horse dimensions (realistic: ~2.5 m nose-to-tail, ~0.65 m shoulder width)
+HORSE_LENGTH: float = 2.5
+HORSE_WIDTH: float = 0.65
+HORSE_HALF_LENGTH: float = HORSE_LENGTH / 2   # 1.25 m
+HORSE_HALF_WIDTH: float = HORSE_WIDTH / 2     # 0.325 m
+
+HORSE_SPACING: float = 1.0  # 1 m lane spacing (0.65 m horse + 0.35 m gap)
 
 PHYS_HZ: int = 240
 PHYS_SUBSTEPS: int = 8
 
 NORMAL_DAMP: float = 0.5
 
-TRACK_HALF_WIDTH: float = HORSE_SPACING * HORSE_COUNT + HORSE_RADIUS  # 13.3
+# Track wide enough for MAX_HORSE_COUNT horses centered + clearance
+TRACK_HALF_WIDTH: float = HORSE_SPACING * MAX_HORSE_COUNT / 2 + HORSE_HALF_WIDTH  # ~10.325 m
 
 RAIL_THICKNESS: float = 0.5  # 0.5 m rail (scaled down from 3.0 to match)
 

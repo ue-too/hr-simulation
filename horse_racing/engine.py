@@ -23,7 +23,6 @@ from horse_racing.track import compute_rail_bboxes, load_track
 from horse_racing.track_navigator import TrackNavigator
 from horse_racing.types import (
     HORSE_COUNT,
-    HORSE_RADIUS,
     HORSE_SPACING,
     NORMAL_DAMP,
     PHYS_HZ,
@@ -138,8 +137,14 @@ class HorseRacingEngine:
         # Outward = forward rotated -90 degrees
         outward = _vec2(fwd[1], -fwd[0])
 
+        # Center horses across the track width
+        n = len(self.horses)
+        total_width = HORSE_SPACING * (n - 1)
+        start_offset = -total_width / 2
+
         for i, hs in enumerate(self.horses):
-            hs.body.position = start + outward * HORSE_SPACING * (i + 1)
+            lateral = start_offset + HORSE_SPACING * i
+            hs.body.position = start + outward * lateral
             hs.body.velocity[:] = 0.0
             hs.body.orientation = math.atan2(fwd[1], fwd[0])
             hs.body.clear_force()
