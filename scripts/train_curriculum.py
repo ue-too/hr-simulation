@@ -19,10 +19,10 @@ from horse_racing.env import HorseRacingSingleEnv
 
 
 CURRICULUM = [
-    {"track": "tracks/curriculum_1_straight.json", "timesteps": 1_000_000, "max_steps": 1500, "name": "Stage 1: Straight"},
-    {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 2_000_000, "max_steps": 3000, "name": "Stage 2: Gentle oval"},
-    {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 2_000_000, "max_steps": 3000, "name": "Stage 3: Tight oval"},
-    {"track": "tracks/exp_track_8.json", "timesteps": 4_000_000, "max_steps": 5000, "name": "Stage 4: Complex track"},
+    {"track": "tracks/curriculum_1_straight.json", "timesteps": 500_000, "max_steps": 1500, "name": "Stage 1: Straight"},
+    {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 750_000, "max_steps": 3000, "name": "Stage 2: Gentle oval"},
+    {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 750_000, "max_steps": 3000, "name": "Stage 3: Tight oval"},
+    {"track": "tracks/exp_track_8.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 4: Complex track"},
 ]
 
 
@@ -41,7 +41,8 @@ class ProgressCallback(BaseCallback):
                     f"  [{self.stage_name}] "
                     f"Steps: {self.num_timesteps:>8d} | "
                     f"reward: {mean_reward:8.2f} | "
-                    f"ep_len: {mean_len:7.0f}"
+                    f"ep_len: {mean_len:7.0f}",
+                    flush=True,
                 )
         return True
 
