@@ -14,7 +14,7 @@ from horse_racing.rllib_env import HorseRacingRLlibEnv
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train horse racing RL agents with RLlib")
-    parser.add_argument("--track", type=str, default="tracks/exp_track_8.json")
+    parser.add_argument("--track", type=str, default="tracks/tokyo.json")
     parser.add_argument("--horse-count", type=int, default=4)
     parser.add_argument("--iterations", type=int, default=200, help="Training iterations")
     parser.add_argument("--num-workers", type=int, default=0,

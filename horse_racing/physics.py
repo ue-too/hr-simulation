@@ -235,20 +235,172 @@ def _detect_curve_wall(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Rail-based wall collision — circle vs explicit rail paths
+# ---------------------------------------------------------------------------
+
+
+def _nearest_point_on_straight(
+    pos: np.ndarray, seg: StraightSegment
+) -> tuple[np.ndarray, float]:
+    """Find nearest point on a straight segment to pos. Returns (point, distance)."""
+    start = _vec2(*seg.start_point)
+    end = _vec2(*seg.end_point)
+    ab = end - start
+    ab_len_sq = float(np.dot(ab, ab))
+    if ab_len_sq < 1e-12:
+        return start, float(np.linalg.norm(pos - start))
+
+    t = float(np.dot(pos - start, ab)) / ab_len_sq
+    t = max(0.0, min(1.0, t))
+    nearest = start + ab * t
+    return nearest, float(np.linalg.norm(pos - nearest))
+
+
+def _nearest_point_on_curve(
+    pos: np.ndarray, seg: CurveSegment
+) -> tuple[np.ndarray, float]:
+    """Find nearest point on a curve segment arc to pos. Returns (point, distance)."""
+    center = _vec2(*seg.center)
+    to_pos = pos - center
+    dist_to_center = float(np.linalg.norm(to_pos))
+
+    if dist_to_center < 1e-6:
+        # Position is at the center — nearest is start point
+        start = _vec2(*seg.start_point)
+        return start, float(np.linalg.norm(pos - start))
+
+    # Angle of pos relative to center
+    pos_angle = math.atan2(float(to_pos[1]), float(to_pos[0]))
+
+    # Start angle of the arc
+    start_angle = math.atan2(
+        seg.start_point[1] - seg.center[1],
+        seg.start_point[0] - seg.center[0],
+    )
+
+    # Check if pos_angle falls within the arc span
+    # Normalize angle difference to determine if within arc
+    span = seg.angle_span
+    if span >= 0:
+        # CCW arc: angles go from start_angle to start_angle + span
+        diff = _normalize_angle(pos_angle - start_angle)
+        if diff < 0:
+            diff += 2 * math.pi
+        in_arc = diff <= span
+    else:
+        # CW arc: angles go from start_angle to start_angle + span (negative)
+        diff = _normalize_angle(pos_angle - start_angle)
+        if diff > 0:
+            diff -= 2 * math.pi
+        in_arc = diff >= span
+
+    if in_arc:
+        # Project onto the arc at the horse's angle
+        direction = to_pos / dist_to_center
+        nearest = center + direction * seg.radius
+        return nearest, abs(dist_to_center - seg.radius)
+    else:
+        # Clamp to the nearest arc endpoint
+        start_pt = _vec2(*seg.start_point)
+        end_pt = _vec2(*seg.end_point)
+        d_start = float(np.linalg.norm(pos - start_pt))
+        d_end = float(np.linalg.norm(pos - end_pt))
+        if d_start <= d_end:
+            return start_pt, d_start
+        return end_pt, d_end
+
+
+def _normalize_angle(a: float) -> float:
+    """Normalize angle to [-pi, pi]."""
+    while a > math.pi:
+        a -= 2 * math.pi
+    while a < -math.pi:
+        a += 2 * math.pi
+    return a
+
+
+def _detect_rail_collision(
+    body: HorseBody,
+    rail_segments: list[TrackSegment],
+    rail_bboxes: list[tuple[float, float, float, float]],
+) -> tuple[np.ndarray, float] | None:
+    """Detect collision between horse and explicit rail path.
+
+    Returns (normal, depth) for the deepest penetration, or None.
+    Normal points from rail toward horse (push direction).
+    """
+    px, py = float(body.position[0]), float(body.position[1])
+    best_depth = 0.0
+    best_normal: np.ndarray | None = None
+    margin = HORSE_RADIUS + 1.0  # expand bbox for safety
+
+    for i, seg in enumerate(rail_segments):
+        # Bounding box culling
+        bmin_x, bmin_y, bmax_x, bmax_y = rail_bboxes[i]
+        if px < bmin_x - margin or px > bmax_x + margin:
+            continue
+        if py < bmin_y - margin or py > bmax_y + margin:
+            continue
+
+        if isinstance(seg, StraightSegment):
+            nearest, dist = _nearest_point_on_straight(body.position, seg)
+        else:
+            nearest, dist = _nearest_point_on_curve(body.position, seg)
+
+        if dist < HORSE_RADIUS:
+            depth = HORSE_RADIUS - dist
+            if depth > best_depth:
+                best_depth = depth
+                if dist > 1e-6:
+                    best_normal = (body.position - nearest) / dist
+                else:
+                    # Horse is exactly on rail — push along arbitrary direction
+                    best_normal = _vec2(1.0, 0.0)
+
+    if best_normal is not None:
+        return (best_normal, best_depth)
+    return None
+
+
 def resolve_wall_collisions(
     bodies: list[HorseBody],
     segments: list[TrackSegment],
     segment_indices: list[int],
+    inner_rails: list[TrackSegment] | None = None,
+    outer_rails: list[TrackSegment] | None = None,
+    inner_bboxes: list[tuple[float, float, float, float]] | None = None,
+    outer_bboxes: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
-    """Legacy wall collision resolution (separate pass). Use resolve_all_collisions instead."""
+    """Resolve wall collisions for all horses.
+
+    When explicit rail data is provided (inner_rails, outer_rails, bboxes),
+    collision is checked against those paths. Otherwise falls back to
+    centerline-derived boundaries.
+    """
+    use_rails = (
+        inner_rails is not None
+        and outer_rails is not None
+        and inner_bboxes is not None
+        and outer_bboxes is not None
+    )
+
     for idx, body in enumerate(bodies):
-        seg = segments[segment_indices[idx]]
-        if isinstance(seg, StraightSegment):
-            hit = _detect_straight_wall(body, seg)
+        if use_rails:
+            hit = _detect_rail_collision(body, inner_rails, inner_bboxes)
+            if hit is not None:
+                _resolve_wall_impulse(body, hit[0], hit[1])
+            hit = _detect_rail_collision(body, outer_rails, outer_bboxes)
+            if hit is not None:
+                _resolve_wall_impulse(body, hit[0], hit[1])
         else:
-            hit = _detect_curve_wall(body, seg)
-        if hit is not None:
-            _resolve_wall_impulse(body, hit[0], hit[1])
+            seg = segments[segment_indices[idx]]
+            if isinstance(seg, StraightSegment):
+                hit = _detect_straight_wall(body, seg)
+            else:
+                hit = _detect_curve_wall(body, seg)
+            if hit is not None:
+                _resolve_wall_impulse(body, hit[0], hit[1])
 
 
 WALL_RESTITUTION: float = 0.4

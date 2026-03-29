@@ -24,7 +24,7 @@ def validate_obs_schema(schema_path: str | Path = "obs_schema.json") -> None:
     with open(schema_path) as f:
         schema = json.load(f)
 
-    engine = HorseRacingEngine("tracks/simple_oval.json")
+    engine = HorseRacingEngine("tracks/test_oval.json")
     engine.step([HorseAction() for _ in range(HORSE_COUNT)])
     obs = engine.get_observations()
     arr = engine.obs_to_array(obs[0])

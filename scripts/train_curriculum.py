@@ -22,7 +22,11 @@ CURRICULUM = [
     {"track": "tracks/curriculum_1_straight.json", "timesteps": 500_000, "max_steps": 1500, "name": "Stage 1: Straight"},
     {"track": "tracks/curriculum_2_gentle_oval.json", "timesteps": 750_000, "max_steps": 3000, "name": "Stage 2: Gentle oval"},
     {"track": "tracks/curriculum_3_tight_oval.json", "timesteps": 750_000, "max_steps": 3000, "name": "Stage 3: Tight oval"},
-    {"track": "tracks/exp_track_8.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 4: Complex track"},
+    {"track": "tracks/tokyo.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 4: Tokyo"},
+    {"track": "tracks/kokura.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 5: Kokura"},
+    {"track": "tracks/tokyo_2600.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 6: Tokyo 2600"},
+    {"track": "tracks/hanshin.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 7: Hanshin"},
+    {"track": "tracks/kyoto.json", "timesteps": 1_000_000, "max_steps": 5000, "name": "Stage 8: Kyoto"},
 ]
 
 

@@ -19,7 +19,7 @@ from horse_racing.genome import (
 from horse_racing.modifiers import ActiveModifier, MODIFIER_IDS, ModifierContext, MODIFIER_REGISTRY
 from horse_racing.physics import integrate, resolve_all_collisions, resolve_horse_collisions, resolve_wall_collisions
 from horse_racing.stamina import HorseRuntimeState, apply_exhaustion, update_stamina
-from horse_racing.track import load_track
+from horse_racing.track import compute_rail_bboxes, load_track
 from horse_racing.track_navigator import TrackNavigator
 from horse_racing.types import (
     HORSE_COUNT,
@@ -79,7 +79,12 @@ class HorseRacingEngine:
         genomes: list[HorseGenome] | None = None,
     ) -> None:
         self.config = config or EngineConfig()
-        self.segments: list[TrackSegment] = load_track(track_path)
+        self.track_data = load_track(track_path)
+        self.segments: list[TrackSegment] = self.track_data.segments
+        self.inner_rails = self.track_data.inner_rails
+        self.outer_rails = self.track_data.outer_rails
+        self.inner_bboxes = compute_rail_bboxes(self.inner_rails)
+        self.outer_bboxes = compute_rail_bboxes(self.outer_rails)
         self.dt = 1.0 / PHYS_HZ
         self.tick: int = 0
         self.horse_count = self.config.horse_count
@@ -178,6 +183,9 @@ class HorseRacingEngine:
         for _sub in range(PHYS_SUBSTEPS):
             # a. Recompute track frame and apply forces
             for i, hs in enumerate(self.horses):
+                if hs.finished:
+                    hs.body.clear_force()
+                    continue
                 hs.frame = hs.navigator.update(hs.body.position)
                 hs.body.clear_force()
                 force = self._compute_force(hs, actions[i])
@@ -193,6 +201,10 @@ class HorseRacingEngine:
                 bodies,
                 self.segments,
                 [hs.navigator.segment_index for hs in self.horses],
+                inner_rails=self.inner_rails,
+                outer_rails=self.outer_rails,
+                inner_bboxes=self.inner_bboxes,
+                outer_bboxes=self.outer_bboxes,
             )
 
             for i, hs in enumerate(self.horses):
@@ -210,8 +222,9 @@ class HorseRacingEngine:
             hs.body.orientation = math.atan2(hs.frame.tangential[1], hs.frame.tangential[0])
 
             # Check finish
-            if hs.navigator.segment_index >= len(self.segments) - 1 and hs.track_progress >= 0.99:
+            if not hs.finished and hs.navigator.segment_index >= len(self.segments) - 1 and hs.track_progress >= 0.99:
                 hs.finished = True
+                hs.body.velocity[:] = 0.0
 
     def _resolve_attributes(self) -> None:
         """Resolve modifiers and compute effective attributes for all horses."""

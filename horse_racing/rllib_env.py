@@ -31,7 +31,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         super().__init__()
         config = config or {}
 
-        self.track_path = config.get("track_path", "tracks/exp_track_8.json")
+        self.track_path = config.get("track_path", "tracks/tokyo.json")
         self.max_steps = config.get("max_steps", 5000)
         # Per-agent archetype: {"horse_0": "front_runner", "horse_1": "stalker", ...}
         self.archetypes: dict[str, str | None] = config.get("archetypes", {})

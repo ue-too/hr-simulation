@@ -25,7 +25,7 @@ class HorseRacingEnv(ParallelEnv):
 
     def __init__(
         self,
-        track_path: str | Path = "tracks/exp_track_8.json",
+        track_path: str | Path = "tracks/tokyo.json",
         max_steps: int = 5000,
         config: EngineConfig | None = None,
         render_mode: str | None = None,

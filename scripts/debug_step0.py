@@ -8,7 +8,7 @@ from horse_racing.types import HORSE_COUNT, HORSE_RADIUS, HorseAction, PHYS_SUBS
 from horse_racing.physics import resolve_horse_collisions, resolve_wall_collisions, integrate
 
 
-TRACK = "tracks/exp_track_8.json"
+TRACK = "tracks/tokyo.json"
 JS_SERVER = "http://localhost:3456"
 
 
@@ -93,7 +93,7 @@ def main():
 
     # JS
     payload = {
-        "track": "exp_track_8",
+        "track": "tokyo",
         "actions": [[{"extraTangential": 0, "extraNormal": 0}] * HORSE_COUNT],
         "steps": 1,
     }

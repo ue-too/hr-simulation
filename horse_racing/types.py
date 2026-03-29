@@ -56,6 +56,14 @@ class CurveSegment:
 
 TrackSegment = StraightSegment | CurveSegment
 
+
+@dataclass(frozen=True)
+class TrackData:
+    """Track definition with centerline and optional explicit rail paths."""
+    segments: list[TrackSegment]
+    inner_rails: list[TrackSegment]
+    outer_rails: list[TrackSegment]
+
 # ---------------------------------------------------------------------------
 # Track frame — local reference frame at a horse's position
 # ---------------------------------------------------------------------------

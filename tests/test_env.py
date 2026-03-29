@@ -6,7 +6,7 @@ from horse_racing.env import HorseRacingSingleEnv
 from horse_racing.multi_agent_env import HorseRacingEnv
 
 
-SIMPLE_OVAL = "tracks/simple_oval.json"
+SIMPLE_OVAL = "tracks/test_oval.json"
 
 
 def test_single_env_reset():

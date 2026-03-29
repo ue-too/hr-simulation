@@ -46,10 +46,34 @@ CURRICULUM = [
         "name": "Stage 3: Tight oval",
     },
     {
-        "track": "tracks/exp_track_8.json",
+        "track": "tracks/tokyo.json",
         "iterations": 150,
         "max_steps": 5000,
-        "name": "Stage 4: Complex track",
+        "name": "Stage 4: Tokyo",
+    },
+    {
+        "track": "tracks/kokura.json",
+        "iterations": 150,
+        "max_steps": 5000,
+        "name": "Stage 5: Kokura",
+    },
+    {
+        "track": "tracks/tokyo_2600.json",
+        "iterations": 150,
+        "max_steps": 5000,
+        "name": "Stage 6: Tokyo 2600",
+    },
+    {
+        "track": "tracks/hanshin.json",
+        "iterations": 150,
+        "max_steps": 5000,
+        "name": "Stage 7: Hanshin",
+    },
+    {
+        "track": "tracks/kyoto.json",
+        "iterations": 150,
+        "max_steps": 5000,
+        "name": "Stage 8: Kyoto",
     },
 ]
 
@@ -103,7 +127,7 @@ def main() -> None:
                         help="Resume from this curriculum stage (1-indexed)")
     parser.add_argument("--archetype-iterations", type=int, default=200)
     parser.add_argument("--archetype-track", type=str,
-                        default="tracks/exp_track_8.json")
+                        default="tracks/tokyo.json")
     args = parser.parse_args()
 
     if args.checkpoint_dir is None:

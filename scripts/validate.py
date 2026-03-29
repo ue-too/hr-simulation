@@ -12,7 +12,7 @@ def main() -> None:
     parser.add_argument(
         "--track",
         type=str,
-        default="tracks/exp_track_8.json",
+        default="tracks/tokyo.json",
         help="Path to track JSON file",
     )
     parser.add_argument("--steps", type=int, default=1000)

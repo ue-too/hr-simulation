@@ -8,11 +8,11 @@ from horse_racing.track import load_track
 from horse_racing.track_navigator import TrackNavigator
 
 
-SIMPLE_OVAL = "tracks/simple_oval.json"
+SIMPLE_OVAL = "tracks/test_oval.json"
 
 
 def test_initial_frame_on_straight():
-    segments = load_track(SIMPLE_OVAL)
+    segments = load_track(SIMPLE_OVAL).segments
     nav = TrackNavigator(segments)
     pos = np.array([10.0, 0.0])
     frame = nav.compute_frame(pos)
@@ -25,7 +25,7 @@ def test_initial_frame_on_straight():
 
 
 def test_progress_at_start():
-    segments = load_track(SIMPLE_OVAL)
+    segments = load_track(SIMPLE_OVAL).segments
     nav = TrackNavigator(segments)
     pos = np.array([0.0, 0.0])
     progress = nav.compute_progress(pos)
@@ -33,7 +33,7 @@ def test_progress_at_start():
 
 
 def test_progress_at_midpoint_of_first_straight():
-    segments = load_track(SIMPLE_OVAL)
+    segments = load_track(SIMPLE_OVAL).segments
     nav = TrackNavigator(segments)
     pos = np.array([150.0, 0.0])
     progress = nav.compute_progress(pos)
@@ -44,7 +44,7 @@ def test_progress_at_midpoint_of_first_straight():
 
 
 def test_segment_transition():
-    segments = load_track(SIMPLE_OVAL)
+    segments = load_track(SIMPLE_OVAL).segments
     nav = TrackNavigator(segments)
 
     # Position past end of first straight
@@ -56,7 +56,7 @@ def test_segment_transition():
 
 
 def test_curve_frame_has_finite_radius():
-    segments = load_track(SIMPLE_OVAL)
+    segments = load_track(SIMPLE_OVAL).segments
     nav = TrackNavigator(segments)
 
     # Move to curve

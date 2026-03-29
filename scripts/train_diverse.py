@@ -19,7 +19,7 @@ def main() -> None:
     parser.add_argument("--checkpoint-dir", type=str, default=None)
     parser.add_argument("--phase-a-track", type=str, default="tracks/curriculum_2_gentle_oval.json")
     parser.add_argument("--phase-a-iters", type=int, default=50, help="Shared policy iterations")
-    parser.add_argument("--phase-b-track", type=str, default="tracks/exp_track_8.json")
+    parser.add_argument("--phase-b-track", type=str, default="tracks/tokyo.json")
     parser.add_argument("--phase-b-iters", type=int, default=100, help="Per-agent policy iterations")
     args = parser.parse_args()
 

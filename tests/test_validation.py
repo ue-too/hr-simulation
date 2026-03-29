@@ -4,7 +4,7 @@ from horse_racing.types import HorseAction
 from horse_racing.validation import run_python_engine
 
 
-SIMPLE_OVAL = "tracks/simple_oval.json"
+SIMPLE_OVAL = "tracks/test_oval.json"
 
 
 def test_run_python_engine_returns_trajectories():

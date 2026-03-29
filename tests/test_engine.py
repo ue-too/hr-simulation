@@ -8,7 +8,7 @@ from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.types import HORSE_COUNT, HorseAction
 
 
-SIMPLE_OVAL = "tracks/simple_oval.json"
+SIMPLE_OVAL = "tracks/test_oval.json"
 
 
 def test_engine_creates_horses():

@@ -27,7 +27,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train jockey archetype policies")
     parser.add_argument("--horse-count", type=int, default=4)
     parser.add_argument("--checkpoint-dir", type=str, default=None)
-    parser.add_argument("--track", type=str, default="tracks/exp_track_8.json")
+    parser.add_argument("--track", type=str, default="tracks/tokyo.json")
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--shared-warmup", type=int, default=50,
                         help="Shared policy warmup iterations before splitting")

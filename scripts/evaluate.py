@@ -53,9 +53,14 @@ class TrackStats:
 
 TRACKS = [
     ("Straight (400m)", "tracks/curriculum_1_straight.json"),
-    ("Gentle Oval (2885m)", "tracks/curriculum_2_gentle_oval.json"),
-    ("Tight Oval (1542m)", "tracks/curriculum_3_tight_oval.json"),
-    ("Complex (1821m)", "tracks/exp_track_8.json"),
+    ("Gentle Oval (1810m)", "tracks/curriculum_2_gentle_oval.json"),
+    ("Tight Oval (1005m)", "tracks/curriculum_3_tight_oval.json"),
+    ("Test Oval (905m)", "tracks/test_oval.json"),
+    ("Tokyo (901m)", "tracks/tokyo.json"),
+    ("Kokura (1415m)", "tracks/kokura.json"),
+    ("Tokyo 2600 (1528m)", "tracks/tokyo_2600.json"),
+    ("Hanshin (1008m)", "tracks/hanshin.json"),
+    ("Kyoto (917m)", "tracks/kyoto.json"),
 ]
 
 
