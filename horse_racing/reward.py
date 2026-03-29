@@ -80,7 +80,7 @@ def compute_reward(
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating
     # per-tick bonuses. Scales with progress: light early, heavy late.
-    reward -= 0.3 * progress
+    reward -= 0.2 * progress
 
     # ── Near-finish bonus ────────────────────────────────────────────
     # Scaled by stamina so horses with reserves (realistic "kick") are
