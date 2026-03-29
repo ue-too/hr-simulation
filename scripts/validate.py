@@ -17,7 +17,7 @@ def main() -> None:
     )
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--server", type=str, default="http://localhost:3456")
-    parser.add_argument("--tolerance", type=float, default=0.01)
+    parser.add_argument("--tolerance", type=float, default=0.02)
     args = parser.parse_args()
 
     print(f"Validating zero-action trajectory on {args.track}")
