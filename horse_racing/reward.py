@@ -68,22 +68,19 @@ def compute_reward(
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
         reward += 0.2 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1)
 
-    # ── Lateral drift penalty ────────────────────────────────────────
-    # Penalize sideways velocity — real jockeys keep a clean line.
-    normal_vel = obs_curr["normal_vel"]
-    reward -= 0.05 * abs(normal_vel)
-
     # ── Cornering line bonus ─────────────────────────────────────────
-    # Reward tight lines on curves. efficiency < 1 when wide, > 1 when
-    # inside the centerline. Only applies on curves (curvature > 0).
+    # Reward taking the inside line on curves. Negative displacement
+    # means the horse is inside its entry lane = shorter path.
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
+        displacement = obs_curr.get("displacement", 0.0)
+        reward += 0.3 * max(-displacement, 0.0) * curvature
         reward += 0.1 * efficiency
 
     # ── Alive penalty ────────────────────────────────────────────────
-    # Increases with progress to encourage finishing quickly rather than
-    # stalling near the end. Light early (agent still learning basics).
-    reward -= 0.1 * progress
+    # Strong time pressure so finishing faster outweighs accumulating
+    # per-tick bonuses. Scales with progress: light early, heavy late.
+    reward -= 0.3 * progress
 
     # ── Near-finish bonus ────────────────────────────────────────────
     # Scaled by stamina so horses with reserves (realistic "kick") are
@@ -92,15 +89,15 @@ def compute_reward(
         reward += 0.5 * max(stamina, 0.1)
 
     # ── Placement bonus ──────────────────────────────────────────────
-    # Per-tick incentive to be ahead of others. Reduced so it doesn't
-    # dominate progress and stamina signals.
+    # Per-tick incentive to be ahead of others. Strong enough to make
+    # overtaking (via steering) worthwhile.
     if num_horses > 1:
-        reward += 0.15 * (num_horses - placement) / (num_horses - 1)
+        reward += 0.4 * (num_horses - placement) / (num_horses - 1)
 
     # ── Collision penalty ────────────────────────────────────────────
     # High enough that bumping doesn't pay off from placement gains.
     if collision_occurred:
-        reward -= 1.0
+        reward -= 2.0
 
     # ── Stamina management ───────────────────────────────────────────
     # Proportional penalty from 40% (above exhaustion threshold to give
@@ -108,12 +105,10 @@ def compute_reward(
     if stamina < 0.40:
         reward -= 0.4 * (1.0 - stamina / 0.40)
     elif stamina > 0.50:
-        # Proportional conservation bonus: +0.1 at 100%, +0.05 at 50%.
         reward += 0.1 * stamina
 
     # ── Pacing bonus ─────────────────────────────────────────────────
-    # Reward cruising efficiently in a healthy stamina zone. Teaches the
-    # agent that coasting is a valid strategy, not just "always push."
+    # Reward cruising efficiently in a healthy stamina zone.
     if 0.40 < stamina < 0.70 and abs(vel - cruise_spd) < 1.0:
         reward += 0.08
 
@@ -124,11 +119,11 @@ def compute_reward(
         reward += FINISH_ORDER_BONUS[idx]
 
     # ── Overtaking bonus ─────────────────────────────────────────────
-    # Rewards gaining positions. Scaled by stamina so reckless overtakes
-    # that burn reserves are worth less.
+    # Strong reward for gaining positions — the main incentive for
+    # lateral movement and strategic racing.
     if prev_placement is not None and placement < prev_placement:
         positions_gained = prev_placement - placement
-        reward += 0.8 * positions_gained * max(stamina, 0.3)
+        reward += 1.5 * positions_gained * max(stamina, 0.3)
 
     # ── Archetype-specific reward shaping ────────────────────────────
     if archetype:
