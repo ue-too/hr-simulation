@@ -27,6 +27,7 @@ from horse_racing.types import (
     NORMAL_DAMP,
     PHYS_HZ,
     PHYS_SUBSTEPS,
+    TRACK_HALF_WIDTH,
     CurveSegment,
     HorseAction,
     HorseBody,
@@ -137,17 +138,21 @@ class HorseRacingEngine:
         # Outward = forward rotated -90 degrees
         outward = _vec2(fwd[1], -fwd[0])
 
-        # Center horses across the track width
+        # Spawn horses from the inner rail outward.
+        # outward points toward the outer rail, so the innermost
+        # position is at the most negative lateral offset.
         n = len(self.horses)
-        total_width = HORSE_SPACING * (n - 1)
-        start_offset = -total_width / 2
-
+        # Start 1 spacing inward from the inner rail, then spread outward
+        inner_edge = -(TRACK_HALF_WIDTH - 2 * HORSE_SPACING)
         for i, hs in enumerate(self.horses):
-            lateral = start_offset + HORSE_SPACING * i
+            lateral = inner_edge + HORSE_SPACING * i
             hs.body.position = start + outward * lateral
             hs.body.velocity[:] = 0.0
-            hs.body.orientation = math.atan2(fwd[1], fwd[0])
             hs.body.clear_force()
+
+            # Orient each horse along the track tangent at its position
+            frame = hs.navigator.update(hs.body.position)
+            hs.body.orientation = math.atan2(frame.tangential[1], frame.tangential[0])
 
     def step(self, actions: list[HorseAction]) -> None:
         """Advance the simulation by one game tick (PHYS_SUBSTEPS physics steps)."""
