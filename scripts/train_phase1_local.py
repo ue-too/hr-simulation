@@ -58,7 +58,7 @@ class ProgressCallback(BaseCallback):
             eta = (self.total - stage_steps) / sps if sps > 0 else 0
             print(
                 f"  [{self.stage_name}] {pct:5.1f}% | overall: {overall:4.1f}% | "
-                f"steps: {steps:>8,} | reward: {mean_r:8.2f} | "
+                f"steps: {stage_steps:>8,} | reward: {mean_r:8.2f} | "
                 f"{sps:.0f} sps | ETA: {eta/60:.1f}m"
             )
         return True
