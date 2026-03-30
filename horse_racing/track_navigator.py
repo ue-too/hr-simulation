@@ -52,6 +52,7 @@ class TrackNavigator:
         for l in self._segment_lengths:
             self._cumulative_lengths.append(acc)
             acc += l
+        self._outward_normals = self._compute_outward_normals()
 
     @property
     def total_length(self) -> float:
@@ -137,7 +138,7 @@ class TrackNavigator:
                 seg.end_point[1] - seg.start_point[1],
             )
         )
-        normal = _rotate_90_cw(tangential)  # points outward/right
+        normal = self._outward_normals[self.segment_index]  # points outward (away from track interior)
         return TrackFrame(
             tangential=tangential,
             normal=normal,
@@ -263,3 +264,42 @@ class TrackNavigator:
                 self.entry_radius = max(dist, next_seg.radius - TRACK_HALF_WIDTH)
         else:
             self.entry_radius = float("inf")
+
+    # ------------------------------------------------------------------
+    # Outward normals for straights
+    # ------------------------------------------------------------------
+
+    def _compute_outward_normals(self) -> list[np.ndarray | None]:
+        """Precompute outward normal for each segment.
+
+        For curves: None (computed dynamically by _curve_frame).
+        For straights: determined by nearest curve center — outward = away from it.
+        """
+        normals: list[np.ndarray | None] = []
+        for i, seg in enumerate(self.segments):
+            if isinstance(seg, CurveSegment):
+                normals.append(None)
+                continue
+            start = _vec2(*seg.start_point)
+            end = _vec2(*seg.end_point)
+            fwd = _normalize(end - start)
+            normal = _rotate_90_cw(fwd)
+
+            curve = self._find_nearest_curve(i)
+            if curve is not None:
+                mid = (start + end) / 2
+                to_center = _vec2(*curve.center) - mid
+                if float(np.dot(to_center, normal)) > 0:
+                    normal = -normal  # flip so it points outward
+            normals.append(normal)
+        return normals
+
+    def _find_nearest_curve(self, idx: int) -> CurveSegment | None:
+        """Find the nearest curve segment to the given index."""
+        for j in range(idx + 1, len(self.segments)):
+            if isinstance(self.segments[j], CurveSegment):
+                return self.segments[j]
+        for j in range(idx - 1, -1, -1):
+            if isinstance(self.segments[j], CurveSegment):
+                return self.segments[j]
+        return None

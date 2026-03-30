@@ -55,6 +55,18 @@ def test_segment_transition():
     assert nav.segment_index == 1
 
 
+def test_straight_normal_points_outward():
+    """Straight frame normal should point away from track interior (outward)."""
+    segments = load_track(SIMPLE_OVAL).segments
+    nav = TrackNavigator(segments)
+    pos = np.array([125.0, 0.0])
+    frame = nav.compute_frame(pos)
+
+    # First straight goes right (+x). Curve centers are below (negative y).
+    # Outward = away from centers = positive y.
+    assert frame.normal[1] > 0.9, f"Expected normal pointing up (+y), got {frame.normal}"
+
+
 def test_curve_frame_has_finite_radius():
     segments = load_track(SIMPLE_OVAL).segments
     nav = TrackNavigator(segments)

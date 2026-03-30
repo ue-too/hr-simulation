@@ -85,7 +85,6 @@ class HorseRacingEngine:
         self.outer_rails = self.track_data.outer_rails
         self.inner_bboxes = compute_rail_bboxes(self.inner_rails)
         self.outer_bboxes = compute_rail_bboxes(self.outer_rails)
-        self._outward_normals = self._compute_outward_normals()
         self.dt = 1.0 / PHYS_HZ
         self.tick: int = 0
         self.horse_count = self.config.horse_count
@@ -154,41 +153,6 @@ class HorseRacingEngine:
             # Orient each horse along the track tangent at its position
             frame = hs.navigator.update(hs.body.position)
             hs.body.orientation = math.atan2(frame.tangential[1], frame.tangential[0])
-
-    def _compute_outward_normals(self) -> list[np.ndarray | None]:
-        """Precompute outward normal for each segment.
-
-        For curves: None (computed dynamically by TrackFrame).
-        For straights: determined by nearest curve center — outward = away from it.
-        """
-        normals: list[np.ndarray | None] = []
-        for i, seg in enumerate(self.segments):
-            if isinstance(seg, CurveSegment):
-                normals.append(None)
-                continue
-            start = _vec2(*seg.start_point)
-            end = _vec2(*seg.end_point)
-            fwd = _normalize(end - start)
-            normal = _vec2(fwd[1], -fwd[0])  # rotate_90_cw
-
-            curve = self._find_nearest_curve(i)
-            if curve is not None:
-                mid = (start + end) / 2
-                to_center = _vec2(*curve.center) - mid
-                if np.dot(to_center, normal) > 0:
-                    normal = -normal  # flip so it points outward
-            normals.append(normal)
-        return normals
-
-    def _find_nearest_curve(self, idx: int) -> CurveSegment | None:
-        """Find the nearest curve segment to the given index."""
-        for j in range(idx + 1, len(self.segments)):
-            if isinstance(self.segments[j], CurveSegment):
-                return self.segments[j]
-        for j in range(idx - 1, -1, -1):
-            if isinstance(self.segments[j], CurveSegment):
-                return self.segments[j]
-        return None
 
     def step(self, actions: list[HorseAction]) -> None:
         """Advance the simulation by one game tick (PHYS_SUBSTEPS physics steps)."""
@@ -355,13 +319,9 @@ class HorseRacingEngine:
             if frame.turn_radius < 1e6:
                 displacement = frame.turn_radius - frame.target_radius
             else:
-                outward = self._outward_normals[hs.navigator.segment_index]
-                if outward is not None:
-                    seg = self.segments[hs.navigator.segment_index]
-                    start = _vec2(*seg.start_point)
-                    displacement = float(np.dot(hs.body.position - start, outward))
-                else:
-                    displacement = 0.0
+                seg = self.segments[hs.navigator.segment_index]
+                start = _vec2(*seg.start_point)
+                displacement = float(np.dot(hs.body.position - start, frame.normal))
             curvature = 1.0 / frame.turn_radius if frame.turn_radius < 1e6 else 0.0
 
             # Path efficiency: on curves, inner line covers less ground per
