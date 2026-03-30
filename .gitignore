@@ -7,3 +7,6 @@ dist/
 *.zip
 *.model
 horse_racing_ppo*
+checkpoints/
+logs/
+logs_*.txt
