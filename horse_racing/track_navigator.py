@@ -44,6 +44,7 @@ class TrackNavigator:
         self.segments = segments
         self.segment_index: int = 0
         self.entry_radius: float = float("inf")  # for curves: radius when entering
+        self.completed_lap: bool = False
         self._segment_lengths = [compute_segment_length(s) for s in segments]
         self._total_length = compute_total_length(segments)
         self._cumulative_lengths: list[float] = []
@@ -59,6 +60,7 @@ class TrackNavigator:
     def reset(self, start_segment: int = 0) -> None:
         self.segment_index = start_segment
         self.entry_radius = float("inf")
+        self.completed_lap = False
 
     def compute_frame(self, position: np.ndarray) -> TrackFrame:
         """Compute the local track frame at the given position."""
@@ -234,6 +236,7 @@ class TrackNavigator:
     def _advance_segment(self, position: np.ndarray) -> None:
         next_idx = self.segment_index + 1
         if next_idx >= len(self.segments):
+            self.completed_lap = True
             return  # stay on last segment (race is over)
 
         prev_seg = self.segments[self.segment_index]

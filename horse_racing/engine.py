@@ -267,8 +267,8 @@ class HorseRacingEngine:
             hs.track_progress = hs.navigator.compute_progress(hs.body.position)
             hs.body.orientation = math.atan2(hs.frame.tangential[1], hs.frame.tangential[0])
 
-            # Check finish
-            if not hs.finished and hs.navigator.segment_index >= len(self.segments) - 1 and hs.track_progress >= 0.99:
+            # Check finish — matches TS completedLap (segment exit geometry)
+            if not hs.finished and hs.navigator.completed_lap:
                 hs.finished = True
                 hs.body.velocity[:] = 0.0
 
