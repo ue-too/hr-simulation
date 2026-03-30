@@ -45,16 +45,17 @@ class ProgressCallback(BaseCallback):
 
     def _on_training_start(self) -> None:
         self.start_time = time.time()
+        self.step_offset = self.num_timesteps
 
     def _on_step(self) -> bool:
         if self.n_calls % self.print_freq == 0 and len(self.model.ep_info_buffer) > 0:
             mean_r = sum(ep["r"] for ep in self.model.ep_info_buffer) / len(self.model.ep_info_buffer)
             elapsed = time.time() - self.start_time
-            steps = self.num_timesteps
-            sps = steps / elapsed if elapsed > 0 else 0
-            pct = 100 * steps / self.total
-            overall = 100 * (self.stage_idx + steps / self.total) / self.num_stages
-            eta = (self.total - steps) / sps if sps > 0 else 0
+            stage_steps = self.num_timesteps - self.step_offset
+            sps = stage_steps / elapsed if elapsed > 0 else 0
+            pct = 100 * stage_steps / self.total
+            overall = 100 * (self.stage_idx + stage_steps / self.total) / self.num_stages
+            eta = (self.total - stage_steps) / sps if sps > 0 else 0
             print(
                 f"  [{self.stage_name}] {pct:5.1f}% | overall: {overall:4.1f}% | "
                 f"steps: {steps:>8,} | reward: {mean_r:8.2f} | "
@@ -104,7 +105,8 @@ def main() -> None:
             opset_version=17, dynamo=False,
         )
 
-    models_dir = Path("models")
+    version = "v3"
+    models_dir = Path("models") / version
     models_dir.mkdir(parents=True, exist_ok=True)
 
     model = None
@@ -146,7 +148,7 @@ def main() -> None:
         env.close()
 
     # Final model = last stage
-    final_onnx = models_dir / "baseline_jockey.onnx"
+    final_onnx = models_dir / "baseline.onnx"
     export_onnx(model, str(final_onnx))
     print(f"Final ONNX → {final_onnx}")
 
