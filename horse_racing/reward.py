@@ -11,6 +11,8 @@ all audible to the agent.
 
 from __future__ import annotations
 
+from horse_racing.types import TRACK_HALF_WIDTH
+
 # Finish order bonuses: 1st place gets the most, 4th gets the least
 FINISH_ORDER_BONUS = [50.0, 30.0, 15.0, 5.0]
 
@@ -76,6 +78,17 @@ def compute_reward(
         displacement = obs_curr.get("displacement", 0.0)
         reward += 0.3 * max(-displacement, 0.0) * curvature
         reward += 0.1 * efficiency
+
+    # ── Straight-segment drift penalty ─────────────────────────────────
+    # Discourage wandering toward the outer rail on straights.
+    # Asymmetric: outer drift penalized more since inner is preferable
+    # approaching curves.
+    if curvature <= 0:
+        displacement = obs_curr.get("displacement", 0.0)
+        if displacement > 0:
+            reward -= 0.05 * min(displacement / TRACK_HALF_WIDTH, 1.0)
+        else:
+            reward -= 0.02 * min(abs(displacement) / TRACK_HALF_WIDTH, 1.0)
 
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating
