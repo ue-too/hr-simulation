@@ -49,16 +49,15 @@ def _obb_corners(pos: np.ndarray, orientation: float,
     """Return 4 corners of an OBB as (4, 2) array."""
     c = math.cos(orientation)
     s = math.sin(orientation)
-    fwd = np.array([c, s])
-    side = np.array([-s, c])
-    fl = fwd * half_l
-    sw = side * half_w
-    return np.array([
-        pos + fl + sw,
-        pos + fl - sw,
-        pos - fl - sw,
-        pos - fl + sw,
-    ])
+    flx, fly = c * half_l, s * half_l
+    swx, swy = -s * half_w, c * half_w
+    px, py = float(pos[0]), float(pos[1])
+    out = np.empty((4, 2), dtype=np.float64)
+    out[0, 0] = px + flx + swx; out[0, 1] = py + fly + swy
+    out[1, 0] = px + flx - swx; out[1, 1] = py + fly - swy
+    out[2, 0] = px - flx - swx; out[2, 1] = py - fly - swy
+    out[3, 0] = px - flx + swx; out[3, 1] = py - fly + swy
+    return out
 
 
 def _obb_axes(orientation: float) -> list[np.ndarray]:
@@ -70,8 +69,19 @@ def _obb_axes(orientation: float) -> list[np.ndarray]:
 
 def _project(corners: np.ndarray, axis: np.ndarray) -> tuple[float, float]:
     """Project corners onto axis, return (min, max)."""
-    dots = corners @ axis
-    return float(dots.min()), float(dots.max())
+    ax, ay = float(axis[0]), float(axis[1])
+    d0 = corners[0, 0] * ax + corners[0, 1] * ay
+    d1 = corners[1, 0] * ax + corners[1, 1] * ay
+    d2 = corners[2, 0] * ax + corners[2, 1] * ay
+    d3 = corners[3, 0] * ax + corners[3, 1] * ay
+    lo = d0; hi = d0
+    if d1 < lo: lo = d1
+    elif d1 > hi: hi = d1
+    if d2 < lo: lo = d2
+    elif d2 > hi: hi = d2
+    if d3 < lo: lo = d3
+    elif d3 > hi: hi = d3
+    return lo, hi
 
 
 def _obb_overlap(
@@ -142,13 +152,17 @@ def resolve_horse_collisions(
         pr = push_resistances[i] if push_resistances else 0.5
         collision_masses.append(masses[i] * (1.0 + pp) * (1.0 + pr))
 
+    max_extent_2 = (HORSE_HALF_LENGTH + HORSE_HALF_WIDTH) * 2
+
     for i in range(n):
         for j in range(i + 1, n):
             # Quick distance check before expensive SAT
-            delta = bodies[j].position - bodies[i].position
-            dist = float(np.linalg.norm(delta))
-            max_extent = HORSE_HALF_LENGTH + HORSE_HALF_WIDTH  # diagonal bound
-            if dist > max_extent * 2:
+            dx = float(bodies[j].position[0] - bodies[i].position[0])
+            dy = float(bodies[j].position[1] - bodies[i].position[1])
+            if abs(dx) > max_extent_2 or abs(dy) > max_extent_2:
+                continue
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist > max_extent_2:
                 continue
 
             result = _obb_overlap(
@@ -210,12 +224,14 @@ def resolve_all_collisions(
 
     # Phase 2: Detect horse-horse collision pairs at current positions
     horse_pairs: list[tuple[int, int]] = []
+    max_extent_2 = (HORSE_HALF_LENGTH + HORSE_HALF_WIDTH) * 2
     for i in range(n):
         for j in range(i + 1, n):
-            delta = bodies[j].position - bodies[i].position
-            dist = float(np.linalg.norm(delta))
-            max_extent = HORSE_HALF_LENGTH + HORSE_HALF_WIDTH
-            if dist < max_extent * 2:
+            dx = float(bodies[j].position[0] - bodies[i].position[0])
+            dy = float(bodies[j].position[1] - bodies[i].position[1])
+            if abs(dx) > max_extent_2 or abs(dy) > max_extent_2:
+                continue
+            if math.sqrt(dx * dx + dy * dy) < max_extent_2:
                 horse_pairs.append((i, j))
 
     # Resolve walls first
@@ -261,45 +277,48 @@ def _detect_wall_collision(
 def _detect_straight_wall(
     body: HorseBody, seg: StraightSegment
 ) -> tuple[np.ndarray, float] | None:
-    fwd = _vec2(
-        seg.end_point[0] - seg.start_point[0],
-        seg.end_point[1] - seg.start_point[1],
-    )
-    length = float(np.linalg.norm(fwd))
+    fx = seg.end_point[0] - seg.start_point[0]
+    fy = seg.end_point[1] - seg.start_point[1]
+    length = math.sqrt(fx * fx + fy * fy)
     if length < 1e-6:
         return None
-    fwd = fwd / length
-    outward = _vec2(fwd[1], -fwd[0])
+    inv_len = 1.0 / length
+    fx *= inv_len
+    fy *= inv_len
+    # outward = (fy, -fx)
+    ox, oy = fy, -fx
 
-    to_horse = body.position - _vec2(*seg.start_point)
-    lateral = float(np.dot(to_horse, outward))
+    thx = float(body.position[0]) - seg.start_point[0]
+    thy = float(body.position[1]) - seg.start_point[1]
+    lateral = thx * ox + thy * oy
 
     wall_limit = TRACK_HALF_WIDTH - HORSE_HALF_WIDTH
     if lateral > wall_limit:
-        return (-outward, lateral - wall_limit)
+        return (_vec2(-ox, -oy), lateral - wall_limit)
     elif lateral < -wall_limit:
-        return (outward, -wall_limit - lateral)
+        return (_vec2(ox, oy), -wall_limit - lateral)
     return None
 
 
 def _detect_curve_wall(
     body: HorseBody, seg: CurveSegment
 ) -> tuple[np.ndarray, float] | None:
-    center = _vec2(*seg.center)
-    to_horse = body.position - center
-    dist = float(np.linalg.norm(to_horse))
+    tx = float(body.position[0]) - seg.center[0]
+    ty = float(body.position[1]) - seg.center[1]
+    dist = math.sqrt(tx * tx + ty * ty)
     if dist < 1e-6:
         return None
 
-    normal = to_horse / dist
+    inv_dist = 1.0 / dist
+    nx, ny = tx * inv_dist, ty * inv_dist
 
     outer_limit = seg.radius + TRACK_HALF_WIDTH - HORSE_HALF_WIDTH
     if dist > outer_limit:
-        return (-normal, dist - outer_limit)
+        return (_vec2(-nx, -ny), dist - outer_limit)
 
     inner_limit = seg.radius - TRACK_HALF_WIDTH + HORSE_HALF_WIDTH
     if inner_limit > 0 and dist < inner_limit:
-        return (normal, inner_limit - dist)
+        return (_vec2(nx, ny), inner_limit - dist)
 
     return None
 
@@ -313,69 +332,84 @@ def _nearest_point_on_straight(
     pos: np.ndarray, seg: StraightSegment
 ) -> tuple[np.ndarray, float]:
     """Find nearest point on a straight segment to pos. Returns (point, distance)."""
-    start = _vec2(*seg.start_point)
-    end = _vec2(*seg.end_point)
-    ab = end - start
-    ab_len_sq = float(np.dot(ab, ab))
+    px, py = float(pos[0]), float(pos[1])
+    sx, sy = seg.start_point
+    ex, ey = seg.end_point
+    abx, aby = ex - sx, ey - sy
+    ab_len_sq = abx * abx + aby * aby
     if ab_len_sq < 1e-12:
-        return start, float(np.linalg.norm(pos - start))
+        dx, dy = px - sx, py - sy
+        return _vec2(sx, sy), math.sqrt(dx * dx + dy * dy)
 
-    t = float(np.dot(pos - start, ab)) / ab_len_sq
-    t = max(0.0, min(1.0, t))
-    nearest = start + ab * t
-    return nearest, float(np.linalg.norm(pos - nearest))
+    t = ((px - sx) * abx + (py - sy) * aby) / ab_len_sq
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    nx, ny = sx + abx * t, sy + aby * t
+    dx, dy = px - nx, py - ny
+    return _vec2(nx, ny), math.sqrt(dx * dx + dy * dy)
 
 
 def _nearest_point_on_curve(
     pos: np.ndarray, seg: CurveSegment
 ) -> tuple[np.ndarray, float]:
     """Find nearest point on a curve segment arc to pos. Returns (point, distance)."""
-    center = _vec2(*seg.center)
-    to_pos = pos - center
-    dist_to_center = float(np.linalg.norm(to_pos))
+    px, py = float(pos[0]), float(pos[1])
+    cx, cy = seg.center
+    tpx, tpy = px - cx, py - cy
+    dist_to_center = math.sqrt(tpx * tpx + tpy * tpy)
 
     if dist_to_center < 1e-6:
-        start = _vec2(*seg.start_point)
-        return start, float(np.linalg.norm(pos - start))
+        sx, sy = seg.start_point
+        dx, dy = px - sx, py - sy
+        return _vec2(sx, sy), math.sqrt(dx * dx + dy * dy)
 
-    pos_angle = math.atan2(float(to_pos[1]), float(to_pos[0]))
+    pos_angle = math.atan2(tpy, tpx)
 
     start_angle = math.atan2(
-        seg.start_point[1] - seg.center[1],
-        seg.start_point[0] - seg.center[0],
+        seg.start_point[1] - cy,
+        seg.start_point[0] - cx,
     )
 
     span = seg.angle_span
+    diff = pos_angle - start_angle
+    # Normalize to [-pi, pi]
+    if diff > math.pi:
+        diff -= 2 * math.pi
+    elif diff < -math.pi:
+        diff += 2 * math.pi
+
     if span >= 0:
-        diff = _normalize_angle(pos_angle - start_angle)
         if diff < 0:
             diff += 2 * math.pi
         in_arc = diff <= span
     else:
-        diff = _normalize_angle(pos_angle - start_angle)
         if diff > 0:
             diff -= 2 * math.pi
         in_arc = diff >= span
 
     if in_arc:
-        direction = to_pos / dist_to_center
-        nearest = center + direction * seg.radius
-        return nearest, abs(dist_to_center - seg.radius)
+        ratio = seg.radius / dist_to_center
+        nx, ny = cx + tpx * ratio, cy + tpy * ratio
+        return _vec2(nx, ny), abs(dist_to_center - seg.radius)
     else:
-        start_pt = _vec2(*seg.start_point)
-        end_pt = _vec2(*seg.end_point)
-        d_start = float(np.linalg.norm(pos - start_pt))
-        d_end = float(np.linalg.norm(pos - end_pt))
+        sx, sy = seg.start_point
+        ex, ey = seg.end_point
+        dsx, dsy = px - sx, py - sy
+        dex, dey = px - ex, py - ey
+        d_start = math.sqrt(dsx * dsx + dsy * dsy)
+        d_end = math.sqrt(dex * dex + dey * dey)
         if d_start <= d_end:
-            return start_pt, d_start
-        return end_pt, d_end
+            return _vec2(sx, sy), d_start
+        return _vec2(ex, ey), d_end
 
 
 def _normalize_angle(a: float) -> float:
     """Normalize angle to [-pi, pi]."""
-    while a > math.pi:
+    if a > math.pi:
         a -= 2 * math.pi
-    while a < -math.pi:
+    elif a < -math.pi:
         a += 2 * math.pi
     return a
 
@@ -392,7 +426,9 @@ def _detect_rail_collision(
     """
     px, py = float(body.position[0]), float(body.position[1])
     best_depth = 0.0
-    best_normal: np.ndarray | None = None
+    best_nx = 1.0
+    best_ny = 0.0
+    found = False
     margin = HORSE_HALF_WIDTH + 1.0  # expand bbox for safety
 
     for i, seg in enumerate(rail_segments):
@@ -411,13 +447,16 @@ def _detect_rail_collision(
             depth = HORSE_HALF_WIDTH - dist
             if depth > best_depth:
                 best_depth = depth
+                found = True
                 if dist > 1e-6:
-                    best_normal = (body.position - nearest) / dist
+                    inv_dist = 1.0 / dist
+                    best_nx = (px - float(nearest[0])) * inv_dist
+                    best_ny = (py - float(nearest[1])) * inv_dist
                 else:
-                    best_normal = _vec2(1.0, 0.0)
+                    best_nx, best_ny = 1.0, 0.0
 
-    if best_normal is not None:
-        return (best_normal, best_depth)
+    if found:
+        return (_vec2(best_nx, best_ny), best_depth)
     return None
 
 
@@ -470,43 +509,41 @@ def _resolve_wall_impulse(body: HorseBody, normal: np.ndarray, depth: float) -> 
 
 
 def _resolve_straight_walls(body: HorseBody, seg: StraightSegment) -> None:
-    fwd = _vec2(
-        seg.end_point[0] - seg.start_point[0],
-        seg.end_point[1] - seg.start_point[1],
-    )
-    length = float(np.linalg.norm(fwd))
+    fx = seg.end_point[0] - seg.start_point[0]
+    fy = seg.end_point[1] - seg.start_point[1]
+    length = math.sqrt(fx * fx + fy * fy)
     if length < 1e-6:
         return
-    fwd = fwd / length
-    outward = _vec2(fwd[1], -fwd[0])
+    inv_len = 1.0 / length
+    fx *= inv_len
+    fy *= inv_len
+    ox, oy = fy, -fx
 
-    to_horse = body.position - _vec2(*seg.start_point)
-    lateral = float(np.dot(to_horse, outward))
+    thx = float(body.position[0]) - seg.start_point[0]
+    thy = float(body.position[1]) - seg.start_point[1]
+    lateral = thx * ox + thy * oy
 
     wall_limit = TRACK_HALF_WIDTH - HORSE_HALF_WIDTH
     if lateral > wall_limit:
-        depth = lateral - wall_limit
-        _resolve_wall_impulse(body, -outward, depth)
+        _resolve_wall_impulse(body, _vec2(-ox, -oy), lateral - wall_limit)
     elif lateral < -wall_limit:
-        depth = -wall_limit - lateral
-        _resolve_wall_impulse(body, outward, depth)
+        _resolve_wall_impulse(body, _vec2(ox, oy), -wall_limit - lateral)
 
 
 def _resolve_curve_walls(body: HorseBody, seg: CurveSegment) -> None:
-    center = _vec2(*seg.center)
-    to_horse = body.position - center
-    dist = float(np.linalg.norm(to_horse))
+    tx = float(body.position[0]) - seg.center[0]
+    ty = float(body.position[1]) - seg.center[1]
+    dist = math.sqrt(tx * tx + ty * ty)
     if dist < 1e-6:
         return
 
-    normal = to_horse / dist
+    inv_dist = 1.0 / dist
+    nx, ny = tx * inv_dist, ty * inv_dist
 
     outer_limit = seg.radius + TRACK_HALF_WIDTH - HORSE_HALF_WIDTH
     if dist > outer_limit:
-        depth = dist - outer_limit
-        _resolve_wall_impulse(body, -normal, depth)
+        _resolve_wall_impulse(body, _vec2(-nx, -ny), dist - outer_limit)
 
     inner_limit = seg.radius - TRACK_HALF_WIDTH + HORSE_HALF_WIDTH
     if inner_limit > 0 and dist < inner_limit:
-        depth = inner_limit - dist
-        _resolve_wall_impulse(body, normal, depth)
+        _resolve_wall_impulse(body, _vec2(nx, ny), inner_limit - dist)

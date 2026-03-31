@@ -21,10 +21,12 @@ def _vec2(x: float, y: float) -> np.ndarray:
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
-    n = np.linalg.norm(v)
+    vx, vy = float(v[0]), float(v[1])
+    n = math.sqrt(vx * vx + vy * vy)
     if n < 1e-12:
         return _vec2(1.0, 0.0)
-    return v / n
+    inv_n = 1.0 / n
+    return _vec2(vx * inv_n, vy * inv_n)
 
 
 def _rotate_90_cw(v: np.ndarray) -> np.ndarray:
@@ -173,21 +175,21 @@ class TrackNavigator:
         )
 
     def _curve_frame(self, seg: CurveSegment, position: np.ndarray) -> TrackFrame:
-        to_pos = _vec2(
-            position[0] - seg.center[0],
-            position[1] - seg.center[1],
-        )
-        dist = float(np.linalg.norm(to_pos))
+        tpx = float(position[0]) - seg.center[0]
+        tpy = float(position[1]) - seg.center[1]
+        dist = math.sqrt(tpx * tpx + tpy * tpy)
         if dist < 1e-6:
             dist = seg.radius
 
-        normal = to_pos / dist  # points outward from center
+        inv_dist = 1.0 / dist
+        nx, ny = tpx * inv_dist, tpy * inv_dist  # normal: outward from center
 
         if seg.angle_span >= 0:  # CCW
-            tangential = _rotate_90_ccw(normal)
+            tangential = _vec2(-ny, nx)
         else:  # CW
-            tangential = _rotate_90_cw(normal)
+            tangential = _vec2(ny, -nx)
 
+        normal = _vec2(nx, ny)
         turn_radius = dist
 
         # Capture entry radius on first visit to this curve
@@ -280,11 +282,9 @@ class TrackNavigator:
                 )
             else:
                 # Coming from straight — capture actual distance
-                to_pos = _vec2(
-                    position[0] - next_seg.center[0],
-                    position[1] - next_seg.center[1],
-                )
-                dist = float(np.linalg.norm(to_pos))
+                dx = float(position[0]) - next_seg.center[0]
+                dy = float(position[1]) - next_seg.center[1]
+                dist = math.sqrt(dx * dx + dy * dy)
                 self.entry_radius = max(dist, next_seg.radius - TRACK_HALF_WIDTH)
         else:
             self.entry_radius = float("inf")
