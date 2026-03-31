@@ -63,6 +63,30 @@ class TrackNavigator:
         self.entry_radius = float("inf")
         self.completed_lap = False
 
+    def position_at_distance(self, distance: float) -> np.ndarray:
+        """Return the centerline position at a given distance along the track."""
+        remaining = distance
+        for i, seg in enumerate(self.segments):
+            seg_len = self._segment_lengths[i]
+            if remaining <= seg_len or i == len(self.segments) - 1:
+                t = min(remaining / seg_len, 1.0) if seg_len > 1e-6 else 0.0
+                if isinstance(seg, StraightSegment):
+                    s = _vec2(*seg.start_point)
+                    e = _vec2(*seg.end_point)
+                    return s + t * (e - s)
+                else:
+                    # Curve: interpolate angle
+                    to_start = _vec2(*seg.start_point) - _vec2(*seg.center)
+                    start_angle = math.atan2(to_start[1], to_start[0])
+                    angle = start_angle + t * seg.angle_span
+                    return _vec2(*seg.center) + seg.radius * _vec2(
+                        math.cos(angle), math.sin(angle)
+                    )
+            remaining -= seg_len
+        # Fallback: end of last segment
+        last = self.segments[-1]
+        return _vec2(*last.end_point)
+
     def compute_frame(self, position: np.ndarray) -> TrackFrame:
         """Compute the local track frame at the given position."""
         seg = self.segments[self.segment_index]

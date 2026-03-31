@@ -8,9 +8,12 @@ from horse_racing.types import (
     HORSE_SPACING,
     HORSE_WIDTH,
     MAX_HORSE_COUNT,
+    MAX_REL_HORSES,
     NORMAL_DAMP,
+    OBS_SIZE,
     PHYS_HZ,
     PHYS_SUBSTEPS,
+    REL_FEATURES_PER_HORSE,
     TRACK_HALF_WIDTH,
 )
 
@@ -22,8 +25,11 @@ __all__ = [
     "HORSE_SPACING",
     "HORSE_WIDTH",
     "MAX_HORSE_COUNT",
+    "MAX_REL_HORSES",
     "NORMAL_DAMP",
+    "OBS_SIZE",
     "PHYS_HZ",
     "PHYS_SUBSTEPS",
+    "REL_FEATURES_PER_HORSE",
     "TRACK_HALF_WIDTH",
 ]

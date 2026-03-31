@@ -10,7 +10,7 @@ from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.reward import compute_reward
-from horse_racing.types import HorseAction
+from horse_racing.types import HorseAction, OBS_SIZE
 
 
 class HorseRacingSingleEnv(gym.Env):
@@ -41,7 +41,7 @@ class HorseRacingSingleEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
-            shape=(26,),
+            shape=(OBS_SIZE,),
             dtype=np.float32,
         )
 

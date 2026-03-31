@@ -10,7 +10,7 @@ from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.reward import compute_reward
-from horse_racing.types import HORSE_COUNT, HorseAction
+from horse_racing.types import HORSE_COUNT, HorseAction, OBS_SIZE
 
 try:
     from pettingzoo import ParallelEnv
@@ -45,7 +45,7 @@ class HorseRacingEnv(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent: str) -> spaces.Space:
-        return spaces.Box(low=-np.inf, high=np.inf, shape=(26,), dtype=np.float32)
+        return spaces.Box(low=-np.inf, high=np.inf, shape=(OBS_SIZE,), dtype=np.float32)
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent: str) -> spaces.Space:

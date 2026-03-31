@@ -24,6 +24,7 @@ from horse_racing.track_navigator import TrackNavigator
 from horse_racing.types import (
     HORSE_COUNT,
     HORSE_SPACING,
+    MAX_REL_HORSES,
     NORMAL_DAMP,
     PHYS_HZ,
     PHYS_SUBSTEPS,
@@ -151,6 +152,30 @@ class HorseRacingEngine:
             hs.body.clear_force()
 
             # Orient each horse along the track tangent at its position
+            frame = hs.navigator.update(hs.body.position)
+            hs.body.orientation = math.atan2(frame.tangential[1], frame.tangential[0])
+
+    def stagger_horses(self, offsets: list[float]) -> None:
+        """Move horses forward along the track centerline by the given distances.
+
+        Each offset (in meters) advances the corresponding horse from its
+        current position. Used to create staggered starts for overtake training.
+        """
+        for i, (hs, offset) in enumerate(zip(self.horses, offsets)):
+            if offset <= 0:
+                continue
+            # Compute current distance along track, then advance
+            progress = hs.navigator.compute_progress(hs.body.position)
+            current_dist = progress * hs.navigator.total_length
+            new_pos = hs.navigator.position_at_distance(current_dist + offset)
+            # Keep the same lateral offset from centerline
+            old_frame = hs.navigator.compute_frame(hs.body.position)
+            delta_to_center = hs.body.position - new_pos
+            # Preserve lateral displacement
+            hs.body.position = new_pos + old_frame.normal * float(
+                np.dot(delta_to_center, old_frame.normal)
+            )
+            # Update navigator and orientation
             frame = hs.navigator.update(hs.body.position)
             hs.body.orientation = math.atan2(frame.tangential[1], frame.tangential[0])
 
@@ -347,7 +372,7 @@ class HorseRacingEngine:
             else:
                 cornering_margin = float("inf")
 
-            # Relative positions to other horses (sorted by distance)
+            # Relative positions & velocities to other horses (sorted by track progress)
             relatives = []
             for j, other in enumerate(self.horses):
                 if j == i:
@@ -355,13 +380,17 @@ class HorseRacingEngine:
                 delta = other.body.position - hs.body.position
                 tang_off = float(np.dot(delta, frame.tangential))
                 norm_off = float(np.dot(delta, frame.normal))
-                dist = float(np.linalg.norm(delta))
-                relatives.append((dist, tang_off, norm_off))
-            relatives.sort(key=lambda r: r[0])
+                vel_delta = other.body.velocity - hs.body.velocity
+                rel_tang_vel = float(np.dot(vel_delta, frame.tangential))
+                rel_norm_vel = float(np.dot(vel_delta, frame.normal))
+                progress_diff = other.track_progress - hs.track_progress
+                relatives.append((progress_diff, tang_off, norm_off, rel_tang_vel, rel_norm_vel))
+            # Descending: horses ahead (positive progress_diff) come first
+            relatives.sort(key=lambda r: -r[0])
 
-            # Pad to 3 entries
-            while len(relatives) < 3:
-                relatives.append((0.0, 0.0, 0.0))
+            # Pad to MAX_REL_HORSES (19) entries
+            while len(relatives) < MAX_REL_HORSES:
+                relatives.append((0.0, 0.0, 0.0, 0.0, 0.0))
 
             obs_list.append(
                 {
@@ -373,9 +402,9 @@ class HorseRacingEngine:
                     "stamina_ratio": stamina_ratio,
                     "effective_cruise_speed": hs.effective_attrs.cruise_speed,
                     "effective_max_speed": hs.effective_attrs.max_speed,
-                    "rel_horse_1": (relatives[0][1], relatives[0][2]),
-                    "rel_horse_2": (relatives[1][1], relatives[1][2]),
-                    "rel_horse_3": (relatives[2][1], relatives[2][2]),
+                    "relatives": [
+                        (r[1], r[2], r[3], r[4]) for r in relatives[:MAX_REL_HORSES]
+                    ],
                     "cornering_margin": cornering_margin,
                     "path_efficiency": path_efficiency,
                     "slope": frame.slope,
@@ -408,12 +437,18 @@ class HorseRacingEngine:
         return placements
 
     def obs_to_array(self, obs: dict) -> np.ndarray:
-        """Convert observation dict to flat numpy array (26,).
+        """Convert observation dict to flat numpy array (96,).
 
-        Layout: 18 continuous features + 8 binary modifier flags.
+        Layout: 8 ego + 76 relative (19×4) + 4 track/attr + 8 modifier flags.
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
+
+        # Flatten relatives: 19 horses × 4 features = 76 values
+        rel_flat: list[float] = []
+        for tang_off, norm_off, rel_tv, rel_nv in obs["relatives"]:
+            rel_flat.extend([tang_off, norm_off, rel_tv, rel_nv])
+
         return np.array(
             [
                 obs["tangential_vel"],
@@ -424,12 +459,7 @@ class HorseRacingEngine:
                 obs["stamina_ratio"],
                 obs["effective_cruise_speed"],
                 obs["effective_max_speed"],
-                obs["rel_horse_1"][0],
-                obs["rel_horse_1"][1],
-                obs["rel_horse_2"][0],
-                obs["rel_horse_2"][1],
-                obs["rel_horse_3"][0],
-                obs["rel_horse_3"][1],
+                *rel_flat,
                 min(obs["cornering_margin"], 1000.0),  # cap inf
                 obs["slope"],
                 obs["pushing_power"],

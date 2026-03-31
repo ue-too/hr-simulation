@@ -72,8 +72,40 @@ def test_engine_obs_to_array():
 
     obs = engine.get_observations()
     arr = engine.obs_to_array(obs[0])
-    assert arr.shape == (26,)
+    assert arr.shape == (96,)
     assert arr.dtype == np.float32
+
+
+def test_relatives_sorted_by_progress():
+    """Relative horse obs should be sorted by track progress (ahead first)."""
+    from horse_racing.engine import EngineConfig
+
+    engine = HorseRacingEngine(SIMPLE_OVAL, EngineConfig(horse_count=5))
+    # Give horse 1 a head start by accelerating it
+    for _ in range(50):
+        actions = [HorseAction()] * 5
+        actions[1] = HorseAction(extra_tangential=10.0)
+        engine.step(actions)
+
+    obs = engine.get_observations()
+    obs0 = obs[0]
+
+    # relatives should have 19 entries (padded)
+    assert len(obs0["relatives"]) == 19
+
+    # 4 actual horses, 15 zero-padded
+    non_zero = [r for r in obs0["relatives"] if any(v != 0.0 for v in r)]
+    assert len(non_zero) == 4
+
+    # Each entry has 4 features: tang_off, norm_off, rel_tang_vel, rel_norm_vel
+    for r in obs0["relatives"]:
+        assert len(r) == 4
+
+    # First relative should be the horse furthest ahead (horse 1 which accelerated)
+    arr = engine.obs_to_array(obs0)
+    assert arr.shape == (96,)
+    # rel_horse_1 tang offset (index 8) should be positive (ahead)
+    assert arr[8] > 0, f"Expected first relative horse ahead, got tang_off={arr[8]}"
 
 
 def test_engine_reset():

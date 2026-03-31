@@ -1,7 +1,9 @@
 """Phase 1 curriculum training — lightweight local version.
 
-Uses few envs and DummyVecEnv to keep CPU usage low.
+Uses few envs and SubprocVecEnv to keep CPU usage low.
 Logs to TensorBoard at logs/baseline/.
+Stages 1-8: single-agent track navigation curriculum.
+Stages 9-11: overtake curriculum with scripted ONNX opponents.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from horse_racing.env import HorseRacingSingleEnv
+from horse_racing.self_play_env import SelfPlayEnv
 
 N_ENVS = 4
 BATCH_SIZE = 256
@@ -30,6 +33,36 @@ CURRICULUM = [
     {"track": "tracks/tokyo_2600.json", "timesteps": 1_000_000, "max_steps": 6000, "name": "Stage 6: Tokyo 2600"},
     {"track": "tracks/hanshin.json", "timesteps": 1_000_000, "max_steps": 4000, "name": "Stage 7: Hanshin"},
     {"track": "tracks/kyoto.json", "timesteps": 1_000_000, "max_steps": 4000, "name": "Stage 8: Kyoto"},
+]
+
+OVERTAKE_CURRICULUM = [
+    {
+        "tracks": ["tracks/tokyo.json"],
+        "timesteps": 1_000_000,
+        "max_steps": 5000,
+        "min_opponents": 3,
+        "max_opponents": 3,
+        "stagger_range": (10.0, 30.0),
+        "name": "Stage 9: Overtake (3 opponents, Tokyo)",
+    },
+    {
+        "tracks": ["tracks/tokyo.json", "tracks/kokura.json"],
+        "timesteps": 1_000_000,
+        "max_steps": 5000,
+        "min_opponents": 3,
+        "max_opponents": 5,
+        "stagger_range": (5.0, 20.0),
+        "name": "Stage 10: Overtake (3-5 opponents, multi-track)",
+    },
+    {
+        "tracks": ["tracks/tokyo.json", "tracks/kokura.json", "tracks/hanshin.json"],
+        "timesteps": 1_500_000,
+        "max_steps": 5000,
+        "min_opponents": 3,
+        "max_opponents": 7,
+        "stagger_range": (0.0, 15.0),
+        "name": "Stage 11: Overtake (3-7 opponents, multi-track)",
+    },
 ]
 
 
@@ -70,13 +103,37 @@ def make_env(track_path: str, max_steps: int):
     return _init
 
 
+def make_self_play_env(
+    tracks: list[str],
+    max_steps: int,
+    opponent_onnx_paths: list[str],
+    min_opponents: int,
+    max_opponents: int,
+    stagger_range: tuple[float, float],
+):
+    def _init():
+        return Monitor(SelfPlayEnv(
+            tracks=tracks,
+            max_steps=max_steps,
+            opponent_onnx_paths=opponent_onnx_paths,
+            min_opponents=min_opponents,
+            max_opponents=max_opponents,
+            stagger_range=stagger_range,
+        ))
+    return _init
+
+
 def main() -> None:
     checkpoint_dir = Path("checkpoints/baseline")
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Phase 1 curriculum — {N_ENVS} envs, DummyVecEnv (low CPU)")
+    total_all = sum(s["timesteps"] for s in CURRICULUM) + sum(s["timesteps"] for s in OVERTAKE_CURRICULUM)
+    num_stages = len(CURRICULUM) + len(OVERTAKE_CURRICULUM)
+
+    print(f"Phase 1 curriculum — {N_ENVS} envs, SubprocVecEnv")
     print(f"TensorBoard logs → {LOG_DIR}/")
-    print(f"Total timesteps: {sum(s['timesteps'] for s in CURRICULUM):,}\n")
+    print(f"Stages 1-{len(CURRICULUM)}: single-agent, Stages {len(CURRICULUM)+1}-{num_stages}: overtake")
+    print(f"Total timesteps: {total_all:,}\n")
 
     import torch
     import torch.nn as nn
@@ -105,13 +162,14 @@ def main() -> None:
             opset_version=17, dynamo=False,
         )
 
-    version = "v3"
+    version = "v4"
     models_dir = Path("models") / version
     models_dir.mkdir(parents=True, exist_ok=True)
 
     model = None
     total_start = time.time()
 
+    # ── Stages 1-8: Single-agent track navigation ────────────────────
     for i, stage in enumerate(CURRICULUM):
         stage_num = i + 1
         print(f"{'=' * 60}")
@@ -132,7 +190,7 @@ def main() -> None:
         else:
             model.set_env(env)
 
-        callback = ProgressCallback(stage["name"], stage["timesteps"], i, len(CURRICULUM))
+        callback = ProgressCallback(stage["name"], stage["timesteps"], i, num_stages)
         model.learn(
             total_timesteps=stage["timesteps"], callback=callback,
             reset_num_timesteps=False, tb_log_name="curriculum",
@@ -146,6 +204,52 @@ def main() -> None:
         print(f"  Saved → {save_path}")
         print(f"  ONNX  → {onnx_path}\n")
         env.close()
+
+    # ── Stages 9-11: Overtake curriculum with scripted opponents ─────
+    # Use the latest ONNX as opponents; after each stage, upgrade opponents
+    latest_onnx = str(models_dir / f"baseline_stage{len(CURRICULUM)}.onnx")
+
+    for j, stage in enumerate(OVERTAKE_CURRICULUM):
+        stage_idx = len(CURRICULUM) + j
+        stage_num = stage_idx + 1
+        print(f"{'=' * 60}")
+        print(f"{stage['name']} — {stage['timesteps']:,} timesteps")
+        print(f"  Opponents: {latest_onnx}")
+        print(f"  Stagger: {stage['stagger_range'][0]:.0f}-{stage['stagger_range'][1]:.0f}m ahead")
+        print(f"{'=' * 60}")
+
+        # SelfPlayEnv can't be used with SubprocVecEnv easily (ONNX sessions),
+        # so use DummyVecEnv for overtake stages
+        env = DummyVecEnv([
+            make_self_play_env(
+                tracks=stage["tracks"],
+                max_steps=stage["max_steps"],
+                opponent_onnx_paths=[latest_onnx],
+                min_opponents=stage["min_opponents"],
+                max_opponents=stage["max_opponents"],
+                stagger_range=stage["stagger_range"],
+            )
+            for _ in range(N_ENVS)
+        ])
+
+        model.set_env(env)
+
+        callback = ProgressCallback(stage["name"], stage["timesteps"], stage_idx, num_stages)
+        model.learn(
+            total_timesteps=stage["timesteps"], callback=callback,
+            reset_num_timesteps=False, tb_log_name="curriculum",
+        )
+
+        save_path = checkpoint_dir / f"curriculum_stage_{stage_num}"
+        model.save(str(save_path))
+        onnx_path = models_dir / f"baseline_stage{stage_num}.onnx"
+        export_onnx(model, str(onnx_path))
+        print(f"  Saved → {save_path}")
+        print(f"  ONNX  → {onnx_path}\n")
+        env.close()
+
+        # Use this stage's ONNX as opponents for the next stage
+        latest_onnx = str(onnx_path)
 
     # Final model = last stage
     final_onnx = models_dir / "baseline.onnx"

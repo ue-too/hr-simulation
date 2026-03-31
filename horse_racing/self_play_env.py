@@ -17,7 +17,7 @@ from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.reward import compute_reward
-from horse_racing.types import HorseAction
+from horse_racing.types import HorseAction, OBS_SIZE
 
 
 class SelfPlayEnv(gym.Env):
@@ -39,6 +39,7 @@ class SelfPlayEnv(gym.Env):
         max_opponents: int = 19,
         config: EngineConfig | None = None,
         render_mode: str | None = None,
+        stagger_range: tuple[float, float] = (0.0, 0.0),
     ) -> None:
         super().__init__()
         self.tracks = [tracks] if isinstance(tracks, str) else list(tracks)
@@ -48,6 +49,7 @@ class SelfPlayEnv(gym.Env):
         self.max_opponents = max_opponents
         self._base_config = config or EngineConfig()
         self.render_mode = render_mode
+        self.stagger_range = stagger_range
 
         # Load opponent ONNX sessions
         self._opponent_sessions: list[ort.InferenceSession] = []
@@ -62,7 +64,7 @@ class SelfPlayEnv(gym.Env):
             high=np.array([10.0, 5.0], dtype=np.float32),
         )
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(26,), dtype=np.float32,
+            low=-np.inf, high=np.inf, shape=(OBS_SIZE,), dtype=np.float32,
         )
 
         self._step_count = 0
@@ -103,6 +105,13 @@ class SelfPlayEnv(gym.Env):
             track_surface=self._base_config.track_surface,
         )
         self.engine = HorseRacingEngine(track, config)
+
+        # Stagger opponents ahead of trainee for overtake training
+        if self.stagger_range[1] > 0:
+            offsets = [0.0]  # trainee stays at start
+            for _ in range(self._num_opponents):
+                offsets.append(random.uniform(self.stagger_range[0], self.stagger_range[1]))
+            self.engine.stagger_horses(offsets)
 
         all_obs = self.engine.get_observations()
         self._all_prev_obs = list(all_obs)
