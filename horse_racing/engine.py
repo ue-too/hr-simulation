@@ -144,7 +144,7 @@ class HorseRacingEngine:
         # position is at the most negative lateral offset.
         n = len(self.horses)
         # Start 1 spacing inward from the inner rail, then spread outward
-        inner_edge = -(TRACK_HALF_WIDTH - 2 * HORSE_SPACING)
+        inner_edge = -(TRACK_HALF_WIDTH - HORSE_SPACING)
         for i, hs in enumerate(self.horses):
             lateral = inner_edge + HORSE_SPACING * i
             hs.body.position = start + outward * lateral

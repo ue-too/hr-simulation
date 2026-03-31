@@ -110,11 +110,16 @@ def cond_pack_anxiety(ctx: ModifierContext) -> bool:
 
 def cond_front_runner(ctx: ModifierContext) -> bool:
     my_progress = ctx.track_progress[ctx.horse_index]
-    return all(
-        my_progress >= ctx.track_progress[i]
-        for i in range(len(ctx.track_progress))
-        if i != ctx.horse_index
-    )
+    for i in range(len(ctx.track_progress)):
+        if i == ctx.horse_index:
+            continue
+        other = ctx.track_progress[i]
+        if other > my_progress:
+            return False
+        # Tied: lower index wins (matches TS ranking tie-break)
+        if other == my_progress and i < ctx.horse_index:
+            return False
+    return True
 
 
 def cond_closer(ctx: ModifierContext) -> bool:
