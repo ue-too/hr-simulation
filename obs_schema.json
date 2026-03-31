@@ -1,7 +1,7 @@
 {
-  "version": 3,
+  "version": 4,
   "description": "Observation vector layout shared between Python training and browser inference.",
-  "size": 96,
+  "size": 102,
   "fields": [
     {
       "index": 0,
@@ -445,41 +445,71 @@
     },
     {
       "index": 88,
+      "name": "forward_accel",
+      "type": "continuous"
+    },
+    {
+      "index": 89,
+      "name": "turn_accel",
+      "type": "continuous"
+    },
+    {
+      "index": 90,
+      "name": "cornering_grip",
+      "type": "continuous"
+    },
+    {
+      "index": 91,
+      "name": "stamina_recovery",
+      "type": "continuous"
+    },
+    {
+      "index": 92,
+      "name": "placement_norm",
+      "type": "continuous"
+    },
+    {
+      "index": 93,
+      "name": "num_horses_norm",
+      "type": "continuous"
+    },
+    {
+      "index": 94,
       "name": "mod_drafting",
       "type": "binary"
     },
     {
-      "index": 89,
+      "index": 95,
       "name": "mod_pack_pressure",
       "type": "binary"
     },
     {
-      "index": 90,
+      "index": 96,
       "name": "mod_pack_anxiety",
       "type": "binary"
     },
     {
-      "index": 91,
+      "index": 97,
       "name": "mod_front_runner",
       "type": "binary"
     },
     {
-      "index": 92,
+      "index": 98,
       "name": "mod_closer",
       "type": "binary"
     },
     {
-      "index": 93,
+      "index": 99,
       "name": "mod_mudder",
       "type": "binary"
     },
     {
-      "index": 94,
+      "index": 100,
       "name": "mod_gate_speed",
       "type": "binary"
     },
     {
-      "index": 95,
+      "index": 101,
       "name": "mod_endurance",
       "type": "binary"
     }

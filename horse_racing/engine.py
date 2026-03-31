@@ -333,6 +333,9 @@ class HorseRacingEngine:
 
     def get_observations(self) -> list[dict]:
         """Return a list of observation dicts, one per horse."""
+        placements = self.get_placements()
+        num_horses = len(self.horses)
+
         obs_list = []
         for i, hs in enumerate(self.horses):
             frame = hs.frame
@@ -410,6 +413,12 @@ class HorseRacingEngine:
                     "slope": frame.slope,
                     "pushing_power": hs.effective_attrs.pushing_power,
                     "push_resistance": hs.effective_attrs.push_resistance,
+                    "forward_accel": hs.effective_attrs.forward_accel,
+                    "turn_accel": hs.effective_attrs.turn_accel,
+                    "cornering_grip": hs.effective_attrs.cornering_grip,
+                    "stamina_recovery": hs.effective_attrs.stamina_recovery,
+                    "placement_norm": (placements[i] - 1) / max(num_horses - 1, 1),
+                    "num_horses": num_horses,
                     "active_modifiers": {
                         m.id for m in hs.runtime.active_modifiers
                     },
@@ -437,9 +446,9 @@ class HorseRacingEngine:
         return placements
 
     def obs_to_array(self, obs: dict) -> np.ndarray:
-        """Convert observation dict to flat numpy array (96,).
+        """Convert observation dict to flat numpy array (102,).
 
-        Layout: 8 ego + 76 relative (19×4) + 4 track/attr + 8 modifier flags.
+        Layout: 8 ego + 76 relative (19×4) + 10 track/attr + 8 modifier flags.
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
@@ -464,6 +473,12 @@ class HorseRacingEngine:
                 obs["slope"],
                 obs["pushing_power"],
                 obs["push_resistance"],
+                obs["forward_accel"],
+                obs["turn_accel"],
+                obs["cornering_grip"],
+                obs["stamina_recovery"],
+                obs["placement_norm"],
+                obs["num_horses"] / 20.0,  # normalize to [0, 1]
                 *modifier_flags,
             ],
             dtype=np.float32,

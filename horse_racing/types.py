@@ -15,7 +15,7 @@ HORSE_COUNT: int = 4
 MAX_HORSE_COUNT: int = 20
 MAX_REL_HORSES: int = MAX_HORSE_COUNT - 1  # 19 observable opponents
 REL_FEATURES_PER_HORSE: int = 4  # tang_offset, norm_offset, rel_tang_vel, rel_norm_vel
-OBS_SIZE: int = 8 + MAX_REL_HORSES * REL_FEATURES_PER_HORSE + 4 + 8  # 96
+OBS_SIZE: int = 8 + MAX_REL_HORSES * REL_FEATURES_PER_HORSE + 10 + 8  # 102
 
 # Rectangle horse dimensions (realistic: ~2.5 m nose-to-tail, ~0.65 m shoulder width)
 HORSE_LENGTH: float = 2.5
