@@ -57,7 +57,9 @@ def compute_reward(
     # Accelerating reward: 1x at start → 3x near finish.
     # Scaled by path_efficiency so wider curve lines yield less reward.
     delta_progress = progress - obs_prev["track_progress"]
-    efficiency = obs_curr.get("path_efficiency", 1.0)
+    raw_efficiency = obs_curr.get("path_efficiency", 1.0)
+    # Amplify efficiency: inside line (eff > 1) boosted, outside (eff < 1) penalized more
+    efficiency = 1.0 + 2.0 * (raw_efficiency - 1.0)
     reward += 200.0 * delta_progress * (1.0 + 2.0 * progress) * efficiency
 
     # ── Speed bonus ──────────────────────────────────────────────────
@@ -76,8 +78,16 @@ def compute_reward(
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
         displacement = obs_curr.get("displacement", 0.0)
-        reward += 0.3 * max(-displacement, 0.0) * curvature
-        reward += 0.1 * efficiency
+        reward += 3.0 * max(-displacement, 0.0) * curvature
+        # Penalty for being OUTSIDE on curves (positive displacement)
+        if displacement > 0:
+            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0
+        reward += 0.3 * efficiency
+
+        # Reward actively steering inward when not already deep inside
+        normal_vel = obs_curr.get("normal_vel", 0.0)
+        if displacement > -3.0 and normal_vel < 0:
+            reward += 0.5 * min(abs(normal_vel), 2.0)
 
     # ── Straight-segment drift penalty ─────────────────────────────────
     # Discourage wandering toward the outer rail on straights.
@@ -87,8 +97,6 @@ def compute_reward(
         displacement = obs_curr.get("displacement", 0.0)
         if displacement > 0:
             reward -= 0.05 * min(displacement / TRACK_HALF_WIDTH, 1.0)
-        else:
-            reward -= 0.02 * min(abs(displacement) / TRACK_HALF_WIDTH, 1.0)
 
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating
