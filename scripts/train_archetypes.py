@@ -181,7 +181,7 @@ def main() -> None:
 
         wrapper = PolicyWrapper(module)
         wrapper.eval()
-        dummy = torch.zeros(1, 26, dtype=torch.float32)
+        dummy = torch.zeros(1, 102, dtype=torch.float32)
         onnx_path = str(checkpoint_dir / f"jockey_{arch_name}.onnx")
 
         torch.onnx.export(

@@ -67,7 +67,7 @@ def main():
     module.eval()
 
     # Test forward pass
-    obs_dim = 26
+    obs_dim = 102
     dummy = torch.zeros(1, obs_dim, dtype=torch.float32)
     with torch.no_grad():
         result = module.forward_inference({"obs": dummy})

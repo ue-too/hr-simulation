@@ -156,7 +156,7 @@ def main():
     wrapper = PolicyNetwork(model.policy)
     wrapper.eval()
     onnx_path = str(checkpoint_dir / "jockey_front_runner.onnx")
-    dummy = torch.zeros(1, 26, dtype=torch.float32)
+    dummy = torch.zeros(1, 102, dtype=torch.float32)
     torch.onnx.export(
         wrapper, dummy, onnx_path,
         input_names=["obs"], output_names=["action"],
@@ -164,7 +164,7 @@ def main():
         opset_version=17, dynamo=False,
     )
     sess = ort.InferenceSession(onnx_path)
-    result = sess.run(["action"], {"obs": np.zeros((1, 26), dtype=np.float32)})
+    result = sess.run(["action"], {"obs": np.zeros((1, 102), dtype=np.float32)})
     print(f"   Exported: {onnx_path}")
     print(f"   Output: [{result[0][0][0]:.4f}, {result[0][0][1]:.4f}] ✓")
 

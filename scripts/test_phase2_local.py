@@ -167,7 +167,7 @@ def main():
 
     # ── 3. Export to ONNX ──────────────────────────────────────────────
     print("\n3. Exporting ONNX models...")
-    obs_dim = 26
+    obs_dim = 102
     dummy = torch.zeros(1, obs_dim, dtype=torch.float32)
 
     for archetype, model in archetype_models.items():
