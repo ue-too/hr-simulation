@@ -78,8 +78,7 @@ def compute_reward(
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
         displacement = obs_curr.get("displacement", 0.0)
-        capped_inside = min(max(-displacement, 0.0), 3.0)
-        reward += 3.0 * capped_inside * curvature
+        reward += 3.0 * max(-displacement, 0.0) * curvature
         # Penalty for being OUTSIDE on curves (positive displacement)
         if displacement > 0:
             reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0
@@ -87,15 +86,17 @@ def compute_reward(
 
         # Reward actively steering inward when not already deep inside
         normal_vel = obs_curr.get("normal_vel", 0.0)
-        if displacement > -1.5 and normal_vel < 0:
+        if displacement > -3.0 and normal_vel < 0:
             reward += 0.5 * min(abs(normal_vel), 2.0)
 
-    # ── Straight-segment stability ────────────────────────────────────
-    # Penalize lateral velocity on straights to prevent drifting.
-    # The horse should hold its line from the previous curve exit.
+    # ── Straight-segment drift penalty ─────────────────────────────────
+    # Discourage wandering toward the outer rail on straights.
+    # Asymmetric: outer drift penalized more since inner is preferable
+    # approaching curves.
     if curvature <= 0:
-        normal_vel = obs_curr.get("normal_vel", 0.0)
-        reward -= 0.15 * min(abs(normal_vel), 2.0)
+        displacement = obs_curr.get("displacement", 0.0)
+        if displacement > 0:
+            reward -= 0.05 * min(displacement / TRACK_HALF_WIDTH, 1.0)
 
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating

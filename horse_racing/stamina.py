@@ -10,6 +10,7 @@ from horse_racing.types import (
     CORNERING_DRAIN_RATE,
     GRIP_FORCE_BASELINE,
     OVERDRIVE_DRAIN_RATE,
+    SPEED_DRAIN_RATE,
     STAMINA_DRAIN_RATE,
 )
 
@@ -46,6 +47,10 @@ def update_stamina(
         tolerated_force = eff.cornering_grip * GRIP_FORCE_BASELINE
         if required_force > tolerated_force:
             drain += (required_force - tolerated_force) * CORNERING_DRAIN_RATE
+
+    # Drain proportional to speed — makes every meter traveled cost stamina.
+    # Shorter paths (inside line) drain less total stamina over a race.
+    drain += current_speed * SPEED_DRAIN_RATE
 
     # Recovery: always applies, but reduced when draining (prevents
     # binary on/off exploit where agent alternates push/coast ticks).

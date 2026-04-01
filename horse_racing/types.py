@@ -39,6 +39,7 @@ RAIL_THICKNESS: float = 0.5  # 0.5 m rail (scaled down from 3.0 to match)
 STAMINA_DRAIN_RATE: float = 0.1
 OVERDRIVE_DRAIN_RATE: float = 0.05
 CORNERING_DRAIN_RATE: float = 0.02
+SPEED_DRAIN_RATE: float = 0.014
 GRIP_FORCE_BASELINE: float = 150.0
 
 # ---------------------------------------------------------------------------
