@@ -202,7 +202,7 @@ def main() -> None:
             opset_version=17, dynamo=False,
         )
 
-    version = "v6"
+    version = "v7"
     models_dir = Path("models") / version
     models_dir.mkdir(parents=True, exist_ok=True)
 
