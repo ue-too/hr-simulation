@@ -3,7 +3,7 @@
 Uses few envs and SubprocVecEnv to keep CPU usage low.
 Logs to TensorBoard at logs/baseline/.
 Stages 1-8: single-agent track navigation curriculum.
-Stages 9-11: overtake curriculum with scripted ONNX opponents.
+Stages 9-12: overtake curriculum with scripted ONNX opponents.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.utils import FloatSchedule
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from horse_racing.env import HorseRacingSingleEnv
@@ -40,28 +41,46 @@ OVERTAKE_CURRICULUM = [
         "tracks": ["tracks/tokyo.json"],
         "timesteps": 1_000_000,
         "max_steps": 5000,
-        "min_opponents": 3,
-        "max_opponents": 3,
+        "min_opponents": 3, "max_opponents": 3,
         "stagger_range": (10.0, 30.0),
-        "name": "Stage 9: Overtake (3 opponents, Tokyo)",
+        "ent_coef": 0.008, "learning_rate": 5e-4, "clip_range": 0.2,
+        "name": "Stage 9: Overtake (3 opp, Tokyo)",
     },
     {
         "tracks": ["tracks/tokyo.json", "tracks/kokura.json"],
         "timesteps": 1_000_000,
         "max_steps": 5000,
-        "min_opponents": 3,
-        "max_opponents": 5,
+        "min_opponents": 3, "max_opponents": 3,
+        "stagger_range": (10.0, 25.0),
+        "ent_coef": 0.005, "learning_rate": 5e-4, "clip_range": 0.18,
+        "name": "Stage 10a: Overtake (3 opp, multi-track)",
+    },
+    {
+        "tracks": ["tracks/tokyo.json", "tracks/kokura.json"],
+        "timesteps": 1_500_000,
+        "max_steps": 5000,
+        "min_opponents": 3, "max_opponents": 5,
         "stagger_range": (5.0, 20.0),
-        "name": "Stage 10: Overtake (3-5 opponents, multi-track)",
+        "ent_coef": 0.003, "learning_rate": 3e-4, "clip_range": 0.15,
+        "name": "Stage 10b: Overtake (3-5 opp, multi-track)",
     },
     {
         "tracks": ["tracks/tokyo.json", "tracks/kokura.json", "tracks/hanshin.json"],
-        "timesteps": 1_500_000,
+        "timesteps": 2_000_000,
         "max_steps": 5000,
-        "min_opponents": 3,
-        "max_opponents": 7,
+        "min_opponents": 3, "max_opponents": 7,
         "stagger_range": (0.0, 15.0),
-        "name": "Stage 11: Overtake (3-7 opponents, multi-track)",
+        "ent_coef": 0.002, "learning_rate": 2e-4, "clip_range": 0.12,
+        "name": "Stage 11: Overtake (3-7 opp, 3-track)",
+    },
+    {
+        "tracks": ["tracks/tokyo.json", "tracks/kokura.json", "tracks/hanshin.json", "tracks/kyoto.json"],
+        "timesteps": 2_500_000,
+        "max_steps": 6000,
+        "min_opponents": 5, "max_opponents": 9,
+        "stagger_range": (0.0, 10.0),
+        "ent_coef": 0.001, "learning_rate": 1e-4, "clip_range": 0.10,
+        "name": "Stage 12: Overtake (5-9 opp, 4-track capstone)",
     },
 ]
 
@@ -95,6 +114,27 @@ class ProgressCallback(BaseCallback):
                 f"{sps:.0f} sps | ETA: {eta/60:.1f}m"
             )
         return True
+
+
+class EntCoefLogCallback(BaseCallback):
+    """Log ent_coef to TensorBoard so we can monitor the schedule."""
+
+    def _on_step(self) -> bool:
+        if self.n_calls % 2048 == 0:
+            self.logger.record("train/ent_coef_actual", self.model.ent_coef)
+        return True
+
+
+def warmup_then_constant(warmup_frac: float, lr_start: float, lr_peak: float):
+    """LR schedule: ramp from lr_start to lr_peak over warmup_frac, then hold."""
+
+    def schedule(progress_remaining: float) -> float:
+        elapsed = 1.0 - progress_remaining
+        if elapsed < warmup_frac:
+            return lr_start + (lr_peak - lr_start) * (elapsed / warmup_frac)
+        return lr_peak
+
+    return schedule
 
 
 def make_env(track_path: str, max_steps: int):
@@ -162,7 +202,7 @@ def main() -> None:
             opset_version=17, dynamo=False,
         )
 
-    version = "v4"
+    version = "v6"
     models_dir = Path("models") / version
     models_dir.mkdir(parents=True, exist_ok=True)
 
@@ -216,6 +256,7 @@ def main() -> None:
         print(f"{stage['name']} — {stage['timesteps']:,} timesteps")
         print(f"  Opponents: {latest_onnx}")
         print(f"  Stagger: {stage['stagger_range'][0]:.0f}-{stage['stagger_range'][1]:.0f}m ahead")
+        print(f"  Hyperparams: lr={stage['learning_rate']}, ent_coef={stage['ent_coef']}, clip={stage['clip_range']}")
         print(f"{'=' * 60}")
 
         # SelfPlayEnv can't be used with SubprocVecEnv easily (ONNX sessions),
@@ -234,9 +275,20 @@ def main() -> None:
 
         model.set_env(env)
 
-        callback = ProgressCallback(stage["name"], stage["timesteps"], stage_idx, num_stages)
+        # Per-stage hyperparameter adjustment
+        target_lr = stage["learning_rate"]
+        model.lr_schedule = FloatSchedule(
+            warmup_then_constant(0.1, target_lr * 0.5, target_lr)
+        )
+        model.ent_coef = stage["ent_coef"]
+        model.clip_range = FloatSchedule(stage["clip_range"])
+
+        callbacks = [
+            ProgressCallback(stage["name"], stage["timesteps"], stage_idx, num_stages),
+            EntCoefLogCallback(),
+        ]
         model.learn(
-            total_timesteps=stage["timesteps"], callback=callback,
+            total_timesteps=stage["timesteps"], callback=callbacks,
             reset_num_timesteps=False, tb_log_name="curriculum",
         )
 
