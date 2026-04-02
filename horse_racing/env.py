@@ -28,6 +28,7 @@ class HorseRacingSingleEnv(gym.Env):
         random_skills: bool = False,
         min_skills: int = 1,
         max_skills: int = 3,
+        skill_reward_scale: float = 10.0,
     ) -> None:
         super().__init__()
         self.track_path = track_path
@@ -53,6 +54,7 @@ class HorseRacingSingleEnv(gym.Env):
         self._random_skills = random_skills
         self._min_skills = min_skills
         self._max_skills = max_skills
+        self._skill_reward_scale = skill_reward_scale
 
         self._step_count = 0
         self._prev_obs: dict | None = None
@@ -66,8 +68,12 @@ class HorseRacingSingleEnv(gym.Env):
         # Sample skills if random mode
         if self._random_skills:
             import random as _rng
-            k = _rng.randint(self._min_skills, self._max_skills)
-            self._active_skills = set(_rng.sample(SKILL_IDS, k))
+            # 20% no-skill episodes for contrastive learning signal
+            if _rng.random() < 0.2:
+                self._active_skills = set()
+            else:
+                k = _rng.randint(self._min_skills, self._max_skills)
+                self._active_skills = set(_rng.sample(SKILL_IDS, k))
 
         all_obs = self.engine.get_observations()
         self._prev_obs = all_obs[0]
@@ -97,6 +103,7 @@ class HorseRacingSingleEnv(gym.Env):
             finish_order=finish_order,
             prev_placement=self._prev_placement,
             active_skills=self._active_skills if self._active_skills else None,
+            skill_reward_scale=self._skill_reward_scale,
         )
         self._prev_placement = placements[0]
 

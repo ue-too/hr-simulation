@@ -44,6 +44,7 @@ class SelfPlayEnv(gym.Env):
         random_skills: bool = False,
         min_skills: int = 1,
         max_skills: int = 3,
+        skill_reward_scale: float = 10.0,
     ) -> None:
         super().__init__()
         self.tracks = [tracks] if isinstance(tracks, str) else list(tracks)
@@ -75,6 +76,7 @@ class SelfPlayEnv(gym.Env):
         self._random_skills = random_skills
         self._min_skills = min_skills
         self._max_skills = max_skills
+        self._skill_reward_scale = skill_reward_scale
 
         self._step_count = 0
         self._prev_obs: dict | None = None
@@ -124,8 +126,12 @@ class SelfPlayEnv(gym.Env):
 
         # Sample skills if random mode
         if self._random_skills:
-            k = random.randint(self._min_skills, self._max_skills)
-            self._active_skills = set(random.sample(SKILL_IDS, k))
+            # 20% no-skill episodes for contrastive learning signal
+            if random.random() < 0.2:
+                self._active_skills = set()
+            else:
+                k = random.randint(self._min_skills, self._max_skills)
+                self._active_skills = set(random.sample(SKILL_IDS, k))
 
         all_obs = self.engine.get_observations()
         self._all_prev_obs = list(all_obs)
@@ -175,6 +181,7 @@ class SelfPlayEnv(gym.Env):
             archetype=self.trainee_archetype,
             prev_placement=self._prev_placement,
             active_skills=self._active_skills if self._active_skills else None,
+            skill_reward_scale=self._skill_reward_scale,
         )
 
         # Track overtakes for monitoring

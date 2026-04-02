@@ -193,3 +193,38 @@ class TestComposability:
         prev = _make_obs()
         bonus = compute_skill_bonus({"nonexistent_skill"}, obs, prev, 2, 4)
         assert bonus == 0.0
+
+
+class TestSkillRewardScale:
+    def test_scaled_bonus_meaningful(self):
+        """Skill bonus with 10x scale should produce >1.0 reward difference."""
+        from horse_racing.reward import compute_reward
+
+        obs_curr = _make_obs(track_progress=0.85, tangential_vel=18.0, stamina_ratio=0.5)
+        obs_prev = _make_obs(track_progress=0.83, tangential_vel=17.0)
+
+        reward_no_skills = compute_reward(
+            obs_prev, obs_curr, False, active_skills=None,
+        )
+        reward_with_skills = compute_reward(
+            obs_prev, obs_curr, False,
+            active_skills={"sprint_timing", "pace_pressure"},
+            skill_reward_scale=10.0,
+        )
+        diff = reward_with_skills - reward_no_skills
+        assert diff > 1.0, f"Scaled skill diff {diff} too small to influence learning"
+
+    def test_scale_1_matches_unscaled(self):
+        """Scale of 1.0 should match the old unscaled behavior."""
+        obs_curr = _make_obs(track_progress=0.85, tangential_vel=18.0, stamina_ratio=0.5)
+        obs_prev = _make_obs(track_progress=0.83, tangential_vel=17.0)
+        skills = {"sprint_timing", "pace_pressure"}
+
+        raw_bonus = compute_skill_bonus(skills, obs_curr, obs_prev, 2, 4)
+
+        from horse_racing.reward import compute_reward
+        reward_no = compute_reward(obs_prev, obs_curr, False, active_skills=None)
+        reward_s1 = compute_reward(
+            obs_prev, obs_curr, False, active_skills=skills, skill_reward_scale=1.0,
+        )
+        assert abs((reward_s1 - reward_no) - raw_bonus) < 1e-6

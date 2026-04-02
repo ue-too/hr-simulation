@@ -96,43 +96,51 @@ STAGES = [
     # ── Skill conditioning stages ──────────────────────────────
     {
         "track": "tracks/tokyo.json",
-        "timesteps": 400_000,
+        "timesteps": 600_000,
         "max_steps": 3500,
         "gate": 0.60,
         "name": "Stage 9: Skills – Tokyo",
         "random_skills": True,
         "min_skills": 1,
         "max_skills": 2,
+        "ent_coef": 0.005,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/hanshin.json",
-        "timesteps": 400_000,
+        "timesteps": 600_000,
         "max_steps": 4000,
         "gate": 0.50,
         "name": "Stage 10: Skills – Hanshin",
         "random_skills": True,
         "min_skills": 1,
         "max_skills": 3,
+        "ent_coef": 0.005,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/kokura.json",
-        "timesteps": 400_000,
+        "timesteps": 600_000,
         "max_steps": 5500,
         "gate": 0.50,
         "name": "Stage 11: Skills – Kokura",
         "random_skills": True,
         "min_skills": 1,
         "max_skills": 3,
+        "ent_coef": 0.005,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/kyoto.json",
-        "timesteps": 400_000,
+        "timesteps": 600_000,
         "max_steps": 4000,
         "gate": 0.50,
         "name": "Stage 12: Skills – Kyoto",
         "random_skills": True,
         "min_skills": 2,
         "max_skills": 3,
+        "ent_coef": 0.005,
+        "skill_reward_scale": 10.0,
     },
 ]
 
@@ -311,6 +319,7 @@ def make_env(
     random_skills: bool = False,
     min_skills: int = 1,
     max_skills: int = 3,
+    skill_reward_scale: float = 10.0,
 ):
     def _init():
         return Monitor(HorseRacingSingleEnv(
@@ -319,6 +328,7 @@ def make_env(
             random_skills=random_skills,
             min_skills=min_skills,
             max_skills=max_skills,
+            skill_reward_scale=skill_reward_scale,
         ))
     return _init
 
@@ -365,6 +375,7 @@ def main() -> None:
             random_skills=stage.get("random_skills", False),
             min_skills=stage.get("min_skills", 1),
             max_skills=stage.get("max_skills", 3),
+            skill_reward_scale=stage.get("skill_reward_scale", 10.0),
         ) for _ in range(args.n_envs)
     ])
 
@@ -373,6 +384,10 @@ def main() -> None:
         print(f"  Loading checkpoint: {resume_path}")
         model = PPO.load(resume_path, env=env, device=args.device)
         model.tensorboard_log = LOG_DIR
+        # Override entropy coefficient for skill stages
+        if "ent_coef" in stage:
+            model.ent_coef = stage["ent_coef"]
+            print(f"  ent_coef override: {stage['ent_coef']}")
     else:
         model = PPO(
             "MlpPolicy", env, verbose=0,

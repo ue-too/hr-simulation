@@ -31,6 +31,7 @@ def compute_reward(
     archetype: str | None = None,
     prev_placement: int | None = None,
     active_skills: set[str] | None = None,
+    skill_reward_scale: float = 10.0,
 ) -> float:
     """Compute the per-step reward for a single horse.
 
@@ -165,7 +166,7 @@ def compute_reward(
 
     # ── Skill-conditioned reward shaping ─────────────────────────────
     if active_skills:
-        reward += compute_skill_bonus(
+        reward += skill_reward_scale * compute_skill_bonus(
             active_skills, obs_curr, obs_prev, placement, num_horses,
         )
 
