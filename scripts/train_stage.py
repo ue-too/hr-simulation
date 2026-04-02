@@ -37,12 +37,18 @@ from horse_racing.env import HorseRacingSingleEnv
 
 # ── Stage definitions ────────────────────────────────────────────────
 STAGES = [
+    # Skills active from the start so the network never learns to ignore them.
+    # Early stages use 1 skill, ramping to 1-3 on real tracks.
     {
         "track": "tracks/curriculum_1_straight.json",
         "timesteps": 200_000,
         "max_steps": 1500,
         "gate": 0.90,
         "name": "Stage 1: Straight",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 1,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/curriculum_2_gentle_oval.json",
@@ -50,6 +56,10 @@ STAGES = [
         "max_steps": 7000,
         "gate": 0.80,
         "name": "Stage 2: Gentle oval",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 1,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/curriculum_3_tight_oval.json",
@@ -57,6 +67,10 @@ STAGES = [
         "max_steps": 4000,
         "gate": 0.70,
         "name": "Stage 3: Tight oval",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 2,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/tokyo.json",
@@ -64,6 +78,10 @@ STAGES = [
         "max_steps": 3500,
         "gate": 0.60,
         "name": "Stage 4: Tokyo",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 2,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/kokura.json",
@@ -71,6 +89,10 @@ STAGES = [
         "max_steps": 5500,
         "gate": 0.60,
         "name": "Stage 5: Kokura",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 2,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/tokyo_2600.json",
@@ -78,6 +100,10 @@ STAGES = [
         "max_steps": 6000,
         "gate": 0.50,
         "name": "Stage 6: Tokyo 2600",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 3,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/hanshin.json",
@@ -85,6 +111,10 @@ STAGES = [
         "max_steps": 4000,
         "gate": 0.50,
         "name": "Stage 7: Hanshin",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 3,
+        "skill_reward_scale": 10.0,
     },
     {
         "track": "tracks/kyoto.json",
@@ -92,8 +122,12 @@ STAGES = [
         "max_steps": 4000,
         "gate": 0.50,
         "name": "Stage 8: Kyoto",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 3,
+        "skill_reward_scale": 10.0,
     },
-    # ── Skill conditioning stages ──────────────────────────────
+    # ── Skill intensification stages (more combos, lower entropy) ─
     {
         "track": "tracks/tokyo.json",
         "timesteps": 600_000,
@@ -102,7 +136,7 @@ STAGES = [
         "name": "Stage 9: Skills – Tokyo",
         "random_skills": True,
         "min_skills": 1,
-        "max_skills": 2,
+        "max_skills": 3,
         "ent_coef": 0.005,
         "skill_reward_scale": 10.0,
     },
@@ -125,7 +159,7 @@ STAGES = [
         "gate": 0.50,
         "name": "Stage 11: Skills – Kokura",
         "random_skills": True,
-        "min_skills": 1,
+        "min_skills": 2,
         "max_skills": 3,
         "ent_coef": 0.005,
         "skill_reward_scale": 10.0,
