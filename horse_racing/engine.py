@@ -459,7 +459,9 @@ class HorseRacingEngine:
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
-        skill_flags = [1.0 if sid in (active_skills or set()) else 0.0 for sid in SKILL_IDS]
+        # Scale skill flags to 5.0 so they have comparable magnitude to continuous features
+        # (binary 0/1 flags get drowned out by features ranging 0-25)
+        skill_flags = [5.0 if sid in (active_skills or set()) else 0.0 for sid in SKILL_IDS]
 
         # Flatten relatives: 19 horses × 4 features = 76 values
         rel_flat: list[float] = []
