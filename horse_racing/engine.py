@@ -195,14 +195,18 @@ class HorseRacingEngine:
             if hs.frame is None:
                 hs.frame = hs.navigator.update(hs.body.position)
             tangential_vel = float(np.dot(hs.body.velocity, hs.frame.tangential))
+            normal_vel_val = float(np.dot(hs.body.velocity, hs.frame.normal))
             speed = float(np.linalg.norm(hs.body.velocity))
             extra_t = actions[i].extra_tangential * hs.effective_attrs.forward_accel
+            extra_n = actions[i].extra_normal * hs.effective_attrs.turn_accel
             update_stamina(
                 hs.runtime,
                 hs.effective_attrs,
                 extra_t,
+                extra_n,
                 speed,
                 tangential_vel,
+                normal_vel_val,
                 hs.frame.turn_radius,
             )
             # Re-apply exhaustion after stamina update
@@ -416,7 +420,7 @@ class HorseRacingEngine:
                     "forward_accel": hs.effective_attrs.forward_accel,
                     "turn_accel": hs.effective_attrs.turn_accel,
                     "cornering_grip": hs.effective_attrs.cornering_grip,
-                    "stamina_recovery": hs.effective_attrs.stamina_recovery,
+                    "drain_rate_mult": hs.effective_attrs.drain_rate_mult,
                     "placement_norm": (placements[i] - 1) / max(num_horses - 1, 1),
                     "num_horses": num_horses,
                     "active_modifiers": {
@@ -476,7 +480,7 @@ class HorseRacingEngine:
                 obs["forward_accel"],
                 obs["turn_accel"],
                 obs["cornering_grip"],
-                obs["stamina_recovery"],
+                obs["drain_rate_mult"],
                 obs["placement_norm"],
                 obs["num_horses"] / 20.0,  # normalize to [0, 1]
                 *modifier_flags,

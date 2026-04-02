@@ -198,8 +198,8 @@ MODIFIER_REGISTRY: dict[str, ModifierDefinition] = {
     ),
     "endurance": ModifierDefinition(
         id="endurance",
-        description="Recovers better when tired",
+        description="Burns less stamina when tired",
         condition=cond_endurance,
-        effects=[ModifierEffect(target="stamina_recovery", pct=0.30)],  # 10-30%
+        effects=[ModifierEffect(target="drain_rate_mult", pct=-0.20)],  # 10-20% less drain
     ),
 }

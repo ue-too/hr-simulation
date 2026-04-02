@@ -20,7 +20,7 @@ TRAIT_RANGES: dict[str, tuple[float, float]] = {
     "turn_accel": (0.5, 1.5),
     "cornering_grip": (0.5, 1.5),
     "stamina": (50.0, 150.0),
-    "stamina_recovery": (0.5, 2.0),
+    "drain_rate_mult": (0.7, 1.3),
     "weight": (430.0, 550.0),
     "pushing_power": (0.0, 1.0),
     "push_resistance": (0.0, 1.0),
@@ -37,7 +37,7 @@ class CoreAttributes:
     turn_accel: float = 1.0
     cornering_grip: float = 1.0
     stamina: float = 100.0
-    stamina_recovery: float = 1.0
+    drain_rate_mult: float = 1.0
     weight: float = 490.0
     pushing_power: float = 0.5
     push_resistance: float = 0.5

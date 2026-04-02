@@ -120,18 +120,27 @@ def compute_reward(
     if collision_occurred:
         reward -= 2.0
 
-    # ── Stamina management ───────────────────────────────────────────
-    # Proportional penalty from 40% (above exhaustion threshold to give
-    # the agent time to react). Strong enough to overcome placement bonus.
-    if stamina < 0.40:
-        reward -= 0.4 * (1.0 - stamina / 0.40)
-    elif stamina > 0.50:
-        reward += 0.1 * stamina
+    # ── Stamina budget ──────────────────────────────────────────────
+    # Drain-only model: penalize burning faster than a linear baseline.
+    # A horse that conserves gets a small bonus; one that overspends
+    # gets a scaled penalty.
+    expected_stamina = 1.0 - progress
+    stamina_margin = stamina - expected_stamina
+    if stamina_margin < -0.15:
+        reward -= 0.5 * abs(stamina_margin + 0.15)
+    elif stamina_margin > 0.05:
+        reward += 0.05 * min(stamina_margin, 0.2)
+
+    # Hard exhaustion penalty aligned with apply_exhaustion threshold
+    if stamina < 0.30:
+        reward -= 0.6 * (1.0 - stamina / 0.30)
 
     # ── Pacing bonus ─────────────────────────────────────────────────
-    # Reward cruising efficiently in a healthy stamina zone.
-    if 0.40 < stamina < 0.70 and abs(vel - cruise_spd) < 1.0:
+    # Early: reward cruising efficiently. Late: reward kicking.
+    if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
         reward += 0.08
+    elif progress > 0.8 and vel > cruise_spd and stamina > 0.25:
+        reward += 0.1
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
@@ -253,7 +262,7 @@ def _stalker_bonus(
         cruise = obs["effective_cruise_speed"]
         max_spd = obs["effective_max_speed"]
         target_ceil = cruise + 0.3 * (max_spd - cruise)
-        if cruise <= vel <= target_ceil and stamina > 0.50:
+        if cruise <= vel <= target_ceil and stamina > (1.0 - progress * 0.5):
             bonus += 0.15
 
     # Late race (75-100%): big bonus for taking the lead
@@ -280,7 +289,7 @@ def _closer_bonus(
 
     # Early race (0-50%): bonus for conserving stamina, no penalty for being back
     if progress < 0.5:
-        if stamina > 0.8:
+        if stamina > (1.0 - progress * 0.3):
             bonus += 0.15
         if placement >= num_horses - 1:
             bonus += 0.05
@@ -297,7 +306,7 @@ def _closer_bonus(
             bonus += 0.15 * ramp * (vel - cruise) / (max_spd - cruise)
 
         # Reward maintaining stamina reserves for the kick
-        if stamina > 0.50:
+        if stamina > (1.0 - progress * 0.5):
             bonus += 0.1
 
     # Late race (75-100%): big bonus for gaining positions

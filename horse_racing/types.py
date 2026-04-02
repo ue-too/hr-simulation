@@ -35,12 +35,14 @@ TRACK_HALF_WIDTH: float = HORSE_SPACING * MAX_HORSE_COUNT / 2 + HORSE_HALF_WIDTH
 
 RAIL_THICKNESS: float = 0.5  # 0.5 m rail (scaled down from 3.0 to match)
 
-# Stamina constants
-STAMINA_DRAIN_RATE: float = 0.1
-OVERDRIVE_DRAIN_RATE: float = 0.05
-CORNERING_DRAIN_RATE: float = 0.02
-SPEED_DRAIN_RATE: float = 0.014
-GRIP_FORCE_BASELINE: float = 150.0
+# Stamina constants (no recovery — fixed pool, drain only)
+STAMINA_DRAIN_RATE: float = 0.01         # tangential push drain (was 0.1)
+OVERDRIVE_DRAIN_RATE: float = 0.005      # exceeding cruise speed (was 0.05)
+CORNERING_DRAIN_RATE: float = 0.002      # cornering beyond grip (was 0.02)
+SPEED_DRAIN_RATE: float = 0.0014         # distance tax (was 0.014)
+GRIP_FORCE_BASELINE: float = 150.0       # unchanged
+LATERAL_STEERING_DRAIN_RATE: float = 0.006   # lateral steering input
+LATERAL_VELOCITY_DRAIN_RATE: float = 0.0008  # sustained lateral drift
 
 # ---------------------------------------------------------------------------
 # Track segment types

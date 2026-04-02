@@ -460,7 +460,7 @@
     },
     {
       "index": 91,
-      "name": "stamina_recovery",
+      "name": "drain_rate_mult",
       "type": "continuous"
     },
     {

@@ -1,14 +1,20 @@
-"""Stamina depletion, recovery, and exhaustion logic."""
+"""Stamina depletion and exhaustion logic.
+
+Fixed pool with no recovery — stamina only decreases over a race.
+Drain accounts for both forward and lateral movement.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from horse_racing.attributes import CoreAttributes
+from horse_racing.attributes import CoreAttributes, TRAIT_RANGES
 from horse_racing.modifiers import ActiveModifier
 from horse_racing.types import (
     CORNERING_DRAIN_RATE,
     GRIP_FORCE_BASELINE,
+    LATERAL_STEERING_DRAIN_RATE,
+    LATERAL_VELOCITY_DRAIN_RATE,
     OVERDRIVE_DRAIN_RATE,
     SPEED_DRAIN_RATE,
     STAMINA_DRAIN_RATE,
@@ -26,16 +32,26 @@ def update_stamina(
     state: HorseRuntimeState,
     eff: CoreAttributes,
     extra_tangential: float,
+    extra_normal: float,
     current_speed: float,
     tangential_vel: float,
+    normal_vel: float,
     turn_radius: float,
 ) -> float:
-    """Update stamina based on current forces and return new stamina value."""
+    """Update stamina based on current forces and return new stamina value.
+
+    Fixed pool — no recovery. All drain is multiplied by the horse's
+    drain_rate_mult attribute (lower = more efficient).
+    """
     drain = 0.0
 
     # Drain from jockey pushing forward
     if extra_tangential > 0:
         drain += abs(extra_tangential) * STAMINA_DRAIN_RATE
+
+    # Drain from jockey steering laterally
+    if abs(extra_normal) > 0:
+        drain += abs(extra_normal) * LATERAL_STEERING_DRAIN_RATE
 
     # Drain from exceeding cruise speed
     if current_speed > eff.cruise_speed:
@@ -48,21 +64,16 @@ def update_stamina(
         if required_force > tolerated_force:
             drain += (required_force - tolerated_force) * CORNERING_DRAIN_RATE
 
-    # Drain proportional to speed — makes every meter traveled cost stamina.
-    # Shorter paths (inside line) drain less total stamina over a race.
+    # Distance tax — every meter traveled costs stamina
     drain += current_speed * SPEED_DRAIN_RATE
 
-    # Recovery: always applies, but reduced when draining (prevents
-    # binary on/off exploit where agent alternates push/coast ticks).
-    if drain > 0:
-        net = drain - eff.stamina_recovery * 0.25
-        if net > 0:
-            state.current_stamina = max(0, state.current_stamina - net)
-        else:
-            state.current_stamina = min(eff.stamina, state.current_stamina - net)
-    else:
-        state.current_stamina = min(eff.stamina, state.current_stamina + eff.stamina_recovery)
+    # Lateral velocity tax — sustained sideways movement costs stamina
+    drain += abs(normal_vel) * LATERAL_VELOCITY_DRAIN_RATE
 
+    # Apply per-horse drain efficiency
+    drain *= eff.drain_rate_mult
+
+    state.current_stamina = max(0.0, state.current_stamina - drain)
     return state.current_stamina
 
 
@@ -83,18 +94,25 @@ def apply_exhaustion(
         turn_accel=eff.turn_accel,
         cornering_grip=eff.cornering_grip,
         stamina=eff.stamina,
-        stamina_recovery=eff.stamina_recovery,
+        drain_rate_mult=eff.drain_rate_mult,
         weight=eff.weight,
     )
 
     if ratio < 0.30:
-        result.forward_accel *= ratio / 0.30
+        result.forward_accel = max(
+            TRAIT_RANGES["forward_accel"][0],
+            result.forward_accel * (ratio / 0.30),
+        )
 
     if ratio < 0.20:
         lerp = ratio / 0.20
         result.max_speed = result.cruise_speed + (result.max_speed - result.cruise_speed) * lerp
+        result.max_speed = max(TRAIT_RANGES["max_speed"][0], result.max_speed)
 
-    if ratio < 0.15:
-        result.turn_accel *= 0.75
+    if ratio < 0.25:
+        result.turn_accel = max(
+            TRAIT_RANGES["turn_accel"][0],
+            result.turn_accel * (0.5 + 0.5 * (ratio / 0.25)),
+        )
 
     return result
