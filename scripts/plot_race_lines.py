@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simulate v9 baseline on all real tracks and plot race lines colored by acceleration state.
+"""Simulate a baseline model on all real tracks and plot race lines colored by acceleration state.
 
 Two rows per track: inner start (default) and outer start.
 
@@ -8,11 +8,17 @@ Colors:
   - Red:    decelerating (extra_tangential < -threshold)
   - Blue:   cruising (in between)
 
-Outputs: artifacts/race_lines_v9.png
+Usage:
+  python scripts/plot_race_lines.py          # defaults to latest model version
+  python scripts/plot_race_lines.py --version v10
+  python scripts/plot_race_lines.py --version v9
+
+Outputs: artifacts/race_lines_{version}.png
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from pathlib import Path
@@ -31,7 +37,6 @@ from horse_racing.types import (
 )
 
 # ── Config ────────────────────────────────────────────────────────────
-MODEL_PATH = "models/v9/baseline.onnx"
 ACCEL_THRESHOLD = 0.15  # action magnitude below this = cruising
 MAX_TICKS = 7000
 
@@ -106,9 +111,13 @@ def simulate_race(
     positions = []
     accel_actions = []
 
+    expected_obs_dim = sess.get_inputs()[0].shape[1]
+
     for tick in range(MAX_TICKS):
         obs = engine.get_observations()
         arr = engine.obs_to_array(obs[0]).reshape(1, -1)
+        # Truncate to match model's expected input dimension
+        arr = arr[:, :expected_obs_dim]
         action = sess.run(["action"], {"obs": arr})[0][0]
 
         extra_tang = float(action[0])
@@ -185,9 +194,33 @@ def draw_race(ax, track_path, track_name, sess, outer_start, label):
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
 
+# ── Resolve model version ────────────────────────────────────────────
+def _detect_latest_version() -> str:
+    models_dir = Path("models")
+    versions = sorted(
+        (d.name for d in models_dir.iterdir()
+         if d.is_dir() and d.name.startswith("v") and (d / "baseline.onnx").exists()),
+        key=lambda v: int(v[1:]),
+    )
+    if not versions:
+        raise FileNotFoundError("No model versions with baseline.onnx found in models/")
+    return versions[-1]
+
+
 # ── Main ──────────────────────────────────────────────────────────────
 def main():
-    sess = ort.InferenceSession(MODEL_PATH)
+    parser = argparse.ArgumentParser(description="Plot race lines for a trained model")
+    parser.add_argument("--version", "-v", type=str, default=None,
+                        help="Model version (e.g. v9, v10). Defaults to latest.")
+    args = parser.parse_args()
+
+    version = args.version or _detect_latest_version()
+    model_path = f"models/{version}/baseline.onnx"
+    if not Path(model_path).exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    print(f"Using model: {model_path}")
+    sess = ort.InferenceSession(model_path)
     output_dir = Path("artifacts")
     output_dir.mkdir(exist_ok=True)
 
@@ -225,11 +258,11 @@ def main():
     fig.legend(handles=legend_elements, loc="lower center", ncol=6,
                fontsize=11, frameon=True, fancybox=True)
 
-    fig.suptitle("v9 Baseline — Race Lines: Inner vs Outer Start",
+    fig.suptitle(f"{version} Baseline — Race Lines: Inner vs Outer Start",
                  fontsize=16, fontweight="bold")
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
 
-    out_path = output_dir / "race_lines_v9.png"
+    out_path = output_dir / f"race_lines_{version}.png"
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"\nSaved to {out_path}")
     plt.close()

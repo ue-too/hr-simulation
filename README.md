@@ -51,6 +51,17 @@ Key files:
 - `horse_racing/engine.py:obs_to_array()` — Python observation builder
 - Browser: `src/simulation/ai-jockey.ts:observationToArray()` — browser observation builder
 
+## Visualizing Race Lines
+
+Simulate races on all real tracks and produce a race-line plot colored by acceleration state (green = accelerating, blue = cruising, red = decelerating):
+
+```bash
+uv run python scripts/plot_race_lines.py                # uses latest model version
+uv run python scripts/plot_race_lines.py --version v9    # specify a version
+```
+
+Output is saved to `artifacts/race_lines_{version}.png`. Each track is shown with both inner-start and outer-start positions. The plot includes tick counts and acceleration/cruise/brake breakdowns.
+
 ## Project Structure
 
 - `horse_racing/` — Core simulation package
