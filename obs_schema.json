@@ -1,7 +1,7 @@
 {
-  "version": 4,
+  "version": 5,
   "description": "Observation vector layout shared between Python training and browser inference.",
-  "size": 102,
+  "size": 108,
   "fields": [
     {
       "index": 0,
@@ -511,6 +511,36 @@
     {
       "index": 101,
       "name": "mod_endurance",
+      "type": "binary"
+    },
+    {
+      "index": 102,
+      "name": "skill_stamina_management",
+      "type": "binary"
+    },
+    {
+      "index": 103,
+      "name": "skill_sprint_timing",
+      "type": "binary"
+    },
+    {
+      "index": 104,
+      "name": "skill_overtake",
+      "type": "binary"
+    },
+    {
+      "index": 105,
+      "name": "skill_drafting_exploit",
+      "type": "binary"
+    },
+    {
+      "index": 106,
+      "name": "skill_cornering_line",
+      "type": "binary"
+    },
+    {
+      "index": 107,
+      "name": "skill_pace_pressure",
       "type": "binary"
     }
   ]

@@ -10,7 +10,7 @@ set -e
 
 PYTHON="${PYTHON:-.venv/bin/python3}"
 START=${1:-1}
-END=${2:-8}
+END=${2:-12}
 
 echo "Training stages ${START}-${END}"
 echo "Python: ${PYTHON}"

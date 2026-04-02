@@ -17,7 +17,7 @@ from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.reward import compute_reward
-from horse_racing.types import HorseAction, OBS_SIZE
+from horse_racing.types import HorseAction, OBS_SIZE, SKILL_IDS
 
 
 class SelfPlayEnv(gym.Env):
@@ -40,6 +40,10 @@ class SelfPlayEnv(gym.Env):
         config: EngineConfig | None = None,
         render_mode: str | None = None,
         stagger_range: tuple[float, float] = (0.0, 0.0),
+        active_skills: set[str] | None = None,
+        random_skills: bool = False,
+        min_skills: int = 1,
+        max_skills: int = 3,
     ) -> None:
         super().__init__()
         self.tracks = [tracks] if isinstance(tracks, str) else list(tracks)
@@ -66,6 +70,11 @@ class SelfPlayEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_SIZE,), dtype=np.float32,
         )
+
+        self._active_skills = active_skills or set()
+        self._random_skills = random_skills
+        self._min_skills = min_skills
+        self._max_skills = max_skills
 
         self._step_count = 0
         self._prev_obs: dict | None = None
@@ -113,12 +122,17 @@ class SelfPlayEnv(gym.Env):
                 offsets.append(random.uniform(self.stagger_range[0], self.stagger_range[1]))
             self.engine.stagger_horses(offsets)
 
+        # Sample skills if random mode
+        if self._random_skills:
+            k = random.randint(self._min_skills, self._max_skills)
+            self._active_skills = set(random.sample(SKILL_IDS, k))
+
         all_obs = self.engine.get_observations()
         self._all_prev_obs = list(all_obs)
         self._prev_obs = all_obs[0]
 
-        obs_array = self.engine.obs_to_array(all_obs[0])
-        return obs_array, {}
+        obs_array = self.engine.obs_to_array(all_obs[0], active_skills=self._active_skills)
+        return obs_array, {"active_skills": self._active_skills}
 
     def step(self, action: np.ndarray):
         self._step_count += 1
@@ -147,7 +161,7 @@ class SelfPlayEnv(gym.Env):
         self._all_prev_obs = list(all_obs)
 
         obs_curr = all_obs[0]
-        obs_array = self.engine.obs_to_array(obs_curr)
+        obs_array = self.engine.obs_to_array(obs_curr, active_skills=self._active_skills)
 
         placements = self.engine.get_placements()
         num_horses = 1 + self._num_opponents
@@ -160,6 +174,7 @@ class SelfPlayEnv(gym.Env):
             finish_order=finish_order,
             archetype=self.trainee_archetype,
             prev_placement=self._prev_placement,
+            active_skills=self._active_skills if self._active_skills else None,
         )
 
         # Track overtakes for monitoring

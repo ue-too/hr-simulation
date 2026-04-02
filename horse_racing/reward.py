@@ -11,6 +11,7 @@ all audible to the agent.
 
 from __future__ import annotations
 
+from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
 
 # Finish order bonuses: 1st place gets the most, 4th gets the least
@@ -29,6 +30,7 @@ def compute_reward(
     finish_order: int | None = None,
     archetype: str | None = None,
     prev_placement: int | None = None,
+    active_skills: set[str] | None = None,
 ) -> float:
     """Compute the per-step reward for a single horse.
 
@@ -159,6 +161,12 @@ def compute_reward(
     if archetype:
         reward += _archetype_bonus(
             archetype, obs_prev, obs_curr, placement, num_horses, progress,
+        )
+
+    # ── Skill-conditioned reward shaping ─────────────────────────────
+    if active_skills:
+        reward += compute_skill_bonus(
+            active_skills, obs_curr, obs_prev, placement, num_horses,
         )
 
     return reward

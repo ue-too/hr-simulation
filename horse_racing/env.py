@@ -10,7 +10,7 @@ from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.reward import compute_reward
-from horse_racing.types import HorseAction, OBS_SIZE
+from horse_racing.types import HorseAction, OBS_SIZE, SKILL_IDS
 
 
 class HorseRacingSingleEnv(gym.Env):
@@ -24,6 +24,10 @@ class HorseRacingSingleEnv(gym.Env):
         max_steps: int = 5000,
         config: EngineConfig | None = None,
         render_mode: str | None = None,
+        active_skills: set[str] | None = None,
+        random_skills: bool = False,
+        min_skills: int = 1,
+        max_skills: int = 3,
     ) -> None:
         super().__init__()
         self.track_path = track_path
@@ -45,6 +49,11 @@ class HorseRacingSingleEnv(gym.Env):
             dtype=np.float32,
         )
 
+        self._active_skills = active_skills or set()
+        self._random_skills = random_skills
+        self._min_skills = min_skills
+        self._max_skills = max_skills
+
         self._step_count = 0
         self._prev_obs: dict | None = None
 
@@ -54,10 +63,16 @@ class HorseRacingSingleEnv(gym.Env):
         self._step_count = 0
         self._prev_placement: int = 1
 
+        # Sample skills if random mode
+        if self._random_skills:
+            import random as _rng
+            k = _rng.randint(self._min_skills, self._max_skills)
+            self._active_skills = set(_rng.sample(SKILL_IDS, k))
+
         all_obs = self.engine.get_observations()
         self._prev_obs = all_obs[0]
-        obs_array = self.engine.obs_to_array(all_obs[0])
-        return obs_array, {}
+        obs_array = self.engine.obs_to_array(all_obs[0], active_skills=self._active_skills)
+        return obs_array, {"active_skills": self._active_skills}
 
     def step(self, action: np.ndarray):
         self._step_count += 1
@@ -71,7 +86,7 @@ class HorseRacingSingleEnv(gym.Env):
 
         all_obs = self.engine.get_observations()
         obs_curr = all_obs[0]
-        obs_array = self.engine.obs_to_array(obs_curr)
+        obs_array = self.engine.obs_to_array(obs_curr, active_skills=self._active_skills)
 
         placements = self.engine.get_placements()
         finish_order = placements[0] if obs_curr["finished"] else None
@@ -81,6 +96,7 @@ class HorseRacingSingleEnv(gym.Env):
             num_horses=self.engine.horse_count,
             finish_order=finish_order,
             prev_placement=self._prev_placement,
+            active_skills=self._active_skills if self._active_skills else None,
         )
         self._prev_placement = placements[0]
 

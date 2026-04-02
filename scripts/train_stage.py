@@ -93,6 +93,47 @@ STAGES = [
         "gate": 0.50,
         "name": "Stage 8: Kyoto",
     },
+    # ── Skill conditioning stages ──────────────────────────────
+    {
+        "track": "tracks/tokyo.json",
+        "timesteps": 400_000,
+        "max_steps": 3500,
+        "gate": 0.60,
+        "name": "Stage 9: Skills – Tokyo",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 2,
+    },
+    {
+        "track": "tracks/hanshin.json",
+        "timesteps": 400_000,
+        "max_steps": 4000,
+        "gate": 0.50,
+        "name": "Stage 10: Skills – Hanshin",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 3,
+    },
+    {
+        "track": "tracks/kokura.json",
+        "timesteps": 400_000,
+        "max_steps": 5500,
+        "gate": 0.50,
+        "name": "Stage 11: Skills – Kokura",
+        "random_skills": True,
+        "min_skills": 1,
+        "max_skills": 3,
+    },
+    {
+        "track": "tracks/kyoto.json",
+        "timesteps": 400_000,
+        "max_steps": 4000,
+        "gate": 0.50,
+        "name": "Stage 12: Skills – Kyoto",
+        "random_skills": True,
+        "min_skills": 2,
+        "max_skills": 3,
+    },
 ]
 
 CHECKPOINT_DIR = Path("checkpoints/baseline")
@@ -264,15 +305,27 @@ def run_eval(model: PPO, track_path: str, max_steps: int, episodes: int) -> dict
 
 # ── Main ──────────────────────────────────────────────────────────────
 
-def make_env(track_path: str, max_steps: int):
+def make_env(
+    track_path: str,
+    max_steps: int,
+    random_skills: bool = False,
+    min_skills: int = 1,
+    max_skills: int = 3,
+):
     def _init():
-        return Monitor(HorseRacingSingleEnv(track_path=track_path, max_steps=max_steps))
+        return Monitor(HorseRacingSingleEnv(
+            track_path=track_path,
+            max_steps=max_steps,
+            random_skills=random_skills,
+            min_skills=min_skills,
+            max_skills=max_skills,
+        ))
     return _init
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a single curriculum stage")
-    parser.add_argument("--stage", type=int, required=True, help="Stage number (1-8)")
+    parser.add_argument("--stage", type=int, required=True, help="Stage number (1-12)")
     parser.add_argument("--timesteps", type=int, default=None, help="Override timesteps")
     parser.add_argument("--resume-from", type=str, default=None,
                         help="Checkpoint to resume from (default: auto from previous stage)")
@@ -306,7 +359,14 @@ def main() -> None:
     print(f"{'=' * 60}")
 
     # Create environment
-    env = SubprocVecEnv([make_env(stage["track"], stage["max_steps"]) for _ in range(args.n_envs)])
+    env = SubprocVecEnv([
+        make_env(
+            stage["track"], stage["max_steps"],
+            random_skills=stage.get("random_skills", False),
+            min_skills=stage.get("min_skills", 1),
+            max_skills=stage.get("max_skills", 3),
+        ) for _ in range(args.n_envs)
+    ])
 
     # Create or load model
     if resume_path:

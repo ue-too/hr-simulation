@@ -28,6 +28,7 @@ from horse_racing.types import (
     NORMAL_DAMP,
     PHYS_HZ,
     PHYS_SUBSTEPS,
+    SKILL_IDS,
     TRACK_HALF_WIDTH,
     CurveSegment,
     HorseAction,
@@ -449,13 +450,16 @@ class HorseRacingEngine:
             placements[idx] = rank + 1
         return placements
 
-    def obs_to_array(self, obs: dict) -> np.ndarray:
-        """Convert observation dict to flat numpy array (102,).
+    def obs_to_array(
+        self, obs: dict, active_skills: set[str] | None = None,
+    ) -> np.ndarray:
+        """Convert observation dict to flat numpy array (108,).
 
-        Layout: 8 ego + 76 relative (19×4) + 10 track/attr + 8 modifier flags.
+        Layout: 8 ego + 76 relative (19×4) + 10 track/attr + 8 modifier flags + 6 skill flags.
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
+        skill_flags = [1.0 if sid in (active_skills or set()) else 0.0 for sid in SKILL_IDS]
 
         # Flatten relatives: 19 horses × 4 features = 76 values
         rel_flat: list[float] = []
@@ -484,6 +488,7 @@ class HorseRacingEngine:
                 obs["placement_norm"],
                 obs["num_horses"] / 20.0,  # normalize to [0, 1]
                 *modifier_flags,
+                *skill_flags,
             ],
             dtype=np.float32,
         )
