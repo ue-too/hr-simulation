@@ -31,9 +31,10 @@ import torch.nn as nn
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from horse_racing.env import HorseRacingSingleEnv
+from horse_racing.self_play_env import SelfPlayEnv
 
 # ── Stage definitions ────────────────────────────────────────────────
 STAGES = [
@@ -178,7 +179,52 @@ STAGES = [
     },
 ]
 
+SELF_PLAY_STAGES = [
+    {
+        "name": "Stage 13: Self-play – Tokyo",
+        "tracks": ["tracks/tokyo.json"],
+        "timesteps": 600_000,
+        "max_steps": 3500,
+        "min_opponents": 3, "max_opponents": 3,
+        "random_skills": True, "min_skills": 1, "max_skills": 3,
+        "skill_reward_scale": 10.0,
+        "ent_coef": 0.005,
+    },
+    {
+        "name": "Stage 14: Self-play – Multi-track",
+        "tracks": ["tracks/tokyo.json", "tracks/hanshin.json", "tracks/kokura.json"],
+        "timesteps": 800_000,
+        "max_steps": 5500,
+        "min_opponents": 3, "max_opponents": 5,
+        "random_skills": True, "min_skills": 1, "max_skills": 3,
+        "skill_reward_scale": 10.0,
+        "ent_coef": 0.003,
+    },
+    {
+        "name": "Stage 15: Self-play – Multi-track (dense)",
+        "tracks": ["tracks/tokyo.json", "tracks/hanshin.json", "tracks/kokura.json", "tracks/kyoto.json"],
+        "timesteps": 1_000_000,
+        "max_steps": 5500,
+        "min_opponents": 5, "max_opponents": 7,
+        "random_skills": True, "min_skills": 2, "max_skills": 3,
+        "skill_reward_scale": 10.0,
+        "ent_coef": 0.002,
+    },
+    {
+        "name": "Stage 16: Self-play – Capstone",
+        "tracks": ["tracks/tokyo.json", "tracks/hanshin.json", "tracks/kokura.json", "tracks/kyoto.json", "tracks/tokyo_2600.json"],
+        "timesteps": 1_000_000,
+        "max_steps": 6000,
+        "min_opponents": 5, "max_opponents": 9,
+        "random_skills": True, "min_skills": 2, "max_skills": 3,
+        "skill_reward_scale": 10.0,
+        "ent_coef": 0.001,
+        "learning_rate": 1e-4,
+    },
+]
+
 CHECKPOINT_DIR = Path("checkpoints/baseline")
+MODELS_DIR = Path("models/v14")
 LOG_DIR = "logs/baseline"
 
 
@@ -281,7 +327,7 @@ class ProgressCallback(BaseCallback):
         self.stage_name = stage_name
         self.total = total_timesteps
         self.print_freq = print_freq
-        self.start_time: float | None = None
+        self.start_time = None
 
     def _on_training_start(self) -> None:
         self.start_time = time.time()
@@ -367,9 +413,35 @@ def make_env(
     return _init
 
 
+def make_self_play_env(
+    tracks,
+    max_steps: int,
+    opponent_onnx_paths,
+    min_opponents: int = 3,
+    max_opponents: int = 5,
+    random_skills: bool = True,
+    min_skills: int = 1,
+    max_skills: int = 3,
+    skill_reward_scale: float = 10.0,
+):
+    def _init():
+        return Monitor(SelfPlayEnv(
+            tracks=tracks,
+            max_steps=max_steps,
+            opponent_onnx_paths=opponent_onnx_paths,
+            min_opponents=min_opponents,
+            max_opponents=max_opponents,
+            random_skills=random_skills,
+            min_skills=min_skills,
+            max_skills=max_skills,
+            skill_reward_scale=skill_reward_scale,
+        ))
+    return _init
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a single curriculum stage")
-    parser.add_argument("--stage", type=int, required=True, help="Stage number (1-12)")
+    parser.add_argument("--stage", type=int, required=True, help="Stage number (1-16)")
     parser.add_argument("--timesteps", type=int, default=None, help="Override timesteps")
     parser.add_argument("--resume-from", type=str, default=None,
                         help="Checkpoint to resume from (default: auto from previous stage)")
@@ -378,14 +450,15 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu/cuda)")
     args = parser.parse_args()
 
-    if args.stage < 1 or args.stage > len(STAGES):
-        print(f"Stage must be 1-{len(STAGES)}, got {args.stage}")
+    max_stage = len(STAGES) + len(SELF_PLAY_STAGES)
+    if args.stage < 1 or args.stage > max_stage:
+        print(f"Stage must be 1-{max_stage}, got {args.stage}")
         sys.exit(1)
 
-    stage = STAGES[args.stage - 1]
-    timesteps = args.timesteps or stage["timesteps"]
+    is_self_play = args.stage > len(STAGES)
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Determine resume checkpoint
     resume_path = args.resume_from
@@ -394,89 +467,171 @@ def main() -> None:
         if prev.exists():
             resume_path = str(prev)
 
-    print(f"{'=' * 60}")
-    print(f"  {stage['name']}")
-    print(f"  track: {stage['track']}")
-    print(f"  timesteps: {timesteps:,}")
-    print(f"  gate: {stage['gate']:.0%} completion")
-    print(f"  resume: {resume_path or 'fresh'}")
-    print(f"{'=' * 60}")
+    if is_self_play:
+        stage = SELF_PLAY_STAGES[args.stage - len(STAGES) - 1]
+        timesteps = args.timesteps or stage["timesteps"]
 
-    # Create environment
-    env = SubprocVecEnv([
-        make_env(
-            stage["track"], stage["max_steps"],
-            random_skills=stage.get("random_skills", False),
-            min_skills=stage.get("min_skills", 1),
-            max_skills=stage.get("max_skills", 3),
-            skill_reward_scale=stage.get("skill_reward_scale", 10.0),
-        ) for _ in range(args.n_envs)
-    ])
+        # Opponent ONNX: use stage 12 model
+        opponent_path = str(MODELS_DIR / "baseline_stage12.onnx")
+        if not Path(opponent_path).exists():
+            # Fallback to checkpoint dir
+            opponent_path = str(CHECKPOINT_DIR / "stage_12.onnx")
+        if not Path(opponent_path).exists():
+            print(f"ERROR: Opponent ONNX not found. Train stages 1-12 first.")
+            sys.exit(1)
 
-    # Create or load model
-    if resume_path:
-        print(f"  Loading checkpoint: {resume_path}")
+        print(f"{'=' * 60}")
+        print(f"  {stage['name']} (self-play)")
+        print(f"  tracks: {stage['tracks']}")
+        print(f"  timesteps: {timesteps:,}")
+        print(f"  opponents: {stage['min_opponents']}-{stage['max_opponents']} (from {opponent_path})")
+        print(f"  skills: random {stage['min_skills']}-{stage['max_skills']} (scale={stage['skill_reward_scale']}x)")
+        print(f"  resume: {resume_path or 'fresh'}")
+        print(f"{'=' * 60}")
+
+        # DummyVecEnv required — ONNX sessions aren't picklable
+        n_envs = min(args.n_envs, 4)
+        env = DummyVecEnv([
+            make_self_play_env(
+                tracks=stage["tracks"], max_steps=stage["max_steps"],
+                opponent_onnx_paths=[opponent_path],
+                min_opponents=stage["min_opponents"], max_opponents=stage["max_opponents"],
+                random_skills=stage.get("random_skills", True),
+                min_skills=stage.get("min_skills", 1), max_skills=stage.get("max_skills", 3),
+                skill_reward_scale=stage.get("skill_reward_scale", 10.0),
+            ) for _ in range(n_envs)
+        ])
+
         model = PPO.load(resume_path, env=env, device=args.device)
         model.tensorboard_log = LOG_DIR
-        # Override entropy coefficient for skill stages
         if "ent_coef" in stage:
             model.ent_coef = stage["ent_coef"]
-            print(f"  ent_coef override: {stage['ent_coef']}")
-    else:
-        model = PPO(
-            "MlpPolicy", env, verbose=0,
-            n_steps=2048, batch_size=256, n_epochs=10,
-            learning_rate=3e-4, gamma=0.99, gae_lambda=0.95,
-            clip_range=0.2, vf_coef=0.5, ent_coef=0.01,
-            device=args.device,
-            tensorboard_log=LOG_DIR,
+            print(f"  ent_coef: {stage['ent_coef']}")
+        if "learning_rate" in stage:
+            model.learning_rate = stage["learning_rate"]
+            print(f"  learning_rate: {stage['learning_rate']}")
+
+        callbacks = [
+            ProgressCallback(stage["name"], timesteps),
+            StaminaLoggingCallback(),
+        ]
+
+        start = time.time()
+        model.learn(
+            total_timesteps=timesteps, callback=callbacks,
+            reset_num_timesteps=False,
+            tb_log_name=f"stage_{args.stage}_selfplay",
         )
+        elapsed = time.time() - start
+        print(f"\n  Training done in {elapsed / 60:.1f} minutes")
 
-    # Train
-    callbacks = [
-        ProgressCallback(stage["name"], timesteps),
-        EarlyStopCallback(stage["gate"]),
-        StaminaLoggingCallback(),
-    ]
+        # Save checkpoint + ONNX
+        save_path = CHECKPOINT_DIR / f"stage_{args.stage}"
+        model.save(str(save_path))
+        onnx_path = MODELS_DIR / f"baseline_stage{args.stage}.onnx"
+        export_onnx(model, str(onnx_path))
+        print(f"  Checkpoint → {save_path}.zip")
+        print(f"  ONNX       → {onnx_path}")
 
-    start = time.time()
-    model.learn(
-        total_timesteps=timesteps, callback=callbacks,
-        reset_num_timesteps=(resume_path is None),
-        tb_log_name=f"stage_{args.stage}",
-    )
-    elapsed = time.time() - start
-    print(f"\n  Training done in {elapsed / 60:.1f} minutes")
+        env.close()
 
-    # Save checkpoint + ONNX
-    save_path = CHECKPOINT_DIR / f"stage_{args.stage}"
-    model.save(str(save_path))
-    onnx_path = CHECKPOINT_DIR / f"stage_{args.stage}.onnx"
-    export_onnx(model, str(onnx_path))
-    print(f"  Checkpoint → {save_path}.zip")
-    print(f"  ONNX       → {onnx_path}")
+        # Eval (single-agent, for comparison)
+        if args.eval_episodes > 0:
+            print(f"\n  Evaluating ({args.eval_episodes} episodes, single-agent)...")
+            sys.stdout.write("  ")
+            stats = run_eval(model, "tracks/tokyo.json", 3500, args.eval_episodes)
+            print(f"  Completion: {stats['completion_rate']:.0%}")
+            print(f"  Mean reward: {stats['mean_reward']:.1f}")
+            print(f"  Final stamina: {stats['mean_final_stamina']:.1%}")
+            print(f"  Avg speed: {stats['mean_avg_speed']:.1f} m/s")
 
-    env.close()
+    else:
+        stage = STAGES[args.stage - 1]
+        timesteps = args.timesteps or stage["timesteps"]
 
-    # Eval
-    if args.eval_episodes > 0:
-        print(f"\n  Evaluating ({args.eval_episodes} episodes, deterministic)...")
-        sys.stdout.write("  ")
-        stats = run_eval(model, stage["track"], stage["max_steps"], args.eval_episodes)
-        print(f"  Completion: {stats['completion_rate']:.0%}")
-        print(f"  Mean reward: {stats['mean_reward']:.1f}")
-        print(f"  Final stamina: {stats['mean_final_stamina']:.1%}")
-        print(f"  Avg speed: {stats['mean_avg_speed']:.1f} m/s")
+        print(f"{'=' * 60}")
+        print(f"  {stage['name']}")
+        print(f"  track: {stage['track']}")
+        print(f"  timesteps: {timesteps:,}")
+        print(f"  gate: {stage['gate']:.0%} completion")
+        print(f"  resume: {resume_path or 'fresh'}")
+        print(f"{'=' * 60}")
 
-        # Gate check
-        passed = stats["completion_rate"] >= stage["gate"]
-        if passed:
-            print(f"\n  GATE PASSED ({stats['completion_rate']:.0%} >= {stage['gate']:.0%})")
-            sys.exit(0)
+        # Create environment
+        env = SubprocVecEnv([
+            make_env(
+                stage["track"], stage["max_steps"],
+                random_skills=stage.get("random_skills", False),
+                min_skills=stage.get("min_skills", 1),
+                max_skills=stage.get("max_skills", 3),
+                skill_reward_scale=stage.get("skill_reward_scale", 10.0),
+            ) for _ in range(args.n_envs)
+        ])
+
+        # Create or load model
+        if resume_path:
+            print(f"  Loading checkpoint: {resume_path}")
+            model = PPO.load(resume_path, env=env, device=args.device)
+            model.tensorboard_log = LOG_DIR
+            # Override entropy coefficient for skill stages
+            if "ent_coef" in stage:
+                model.ent_coef = stage["ent_coef"]
+                print(f"  ent_coef override: {stage['ent_coef']}")
         else:
-            print(f"\n  GATE FAILED ({stats['completion_rate']:.0%} < {stage['gate']:.0%})")
-            print(f"  Re-run with more timesteps: --timesteps {timesteps * 2}")
-            sys.exit(1)
+            model = PPO(
+                "MlpPolicy", env, verbose=0,
+                n_steps=2048, batch_size=256, n_epochs=10,
+                learning_rate=3e-4, gamma=0.99, gae_lambda=0.95,
+                clip_range=0.2, vf_coef=0.5, ent_coef=0.01,
+                device=args.device,
+                tensorboard_log=LOG_DIR,
+            )
+
+        # Train
+        callbacks = [
+            ProgressCallback(stage["name"], timesteps),
+            EarlyStopCallback(stage["gate"]),
+            StaminaLoggingCallback(),
+        ]
+
+        start = time.time()
+        model.learn(
+            total_timesteps=timesteps, callback=callbacks,
+            reset_num_timesteps=(resume_path is None),
+            tb_log_name=f"stage_{args.stage}",
+        )
+        elapsed = time.time() - start
+        print(f"\n  Training done in {elapsed / 60:.1f} minutes")
+
+        # Save checkpoint + ONNX
+        save_path = CHECKPOINT_DIR / f"stage_{args.stage}"
+        model.save(str(save_path))
+        onnx_path = CHECKPOINT_DIR / f"stage_{args.stage}.onnx"
+        export_onnx(model, str(onnx_path))
+        print(f"  Checkpoint → {save_path}.zip")
+        print(f"  ONNX       → {onnx_path}")
+
+        env.close()
+
+        # Eval
+        if args.eval_episodes > 0:
+            print(f"\n  Evaluating ({args.eval_episodes} episodes, deterministic)...")
+            sys.stdout.write("  ")
+            stats = run_eval(model, stage["track"], stage["max_steps"], args.eval_episodes)
+            print(f"  Completion: {stats['completion_rate']:.0%}")
+            print(f"  Mean reward: {stats['mean_reward']:.1f}")
+            print(f"  Final stamina: {stats['mean_final_stamina']:.1%}")
+            print(f"  Avg speed: {stats['mean_avg_speed']:.1f} m/s")
+
+            # Gate check
+            passed = stats["completion_rate"] >= stage["gate"]
+            if passed:
+                print(f"\n  GATE PASSED ({stats['completion_rate']:.0%} >= {stage['gate']:.0%})")
+                sys.exit(0)
+            else:
+                print(f"\n  GATE FAILED ({stats['completion_rate']:.0%} < {stage['gate']:.0%})")
+                print(f"  Re-run with more timesteps: --timesteps {timesteps * 2}")
+                sys.exit(1)
 
 
 if __name__ == "__main__":
