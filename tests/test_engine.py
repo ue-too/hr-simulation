@@ -141,6 +141,42 @@ def test_engine_custom_horse_count():
     assert len(engine.horses) == 2
 
 
+def test_auto_cruise_blend():
+    """With zero jockey input, auto-cruise drives the horse. With large input, jockey overrides."""
+    engine = HorseRacingEngine(SIMPLE_OVAL)
+
+    # Run 100 steps with zero actions — horse should approach cruise speed
+    for _ in range(100):
+        engine.step([HorseAction() for _ in range(HORSE_COUNT)])
+    obs_cruise = engine.get_observations()
+    cruise_vel = obs_cruise[0]["tangential_vel"]
+    cruise_speed = obs_cruise[0]["effective_cruise_speed"]
+    assert abs(cruise_vel - cruise_speed) < 1.0, (
+        f"Zero input: vel {cruise_vel:.2f} should be near cruise {cruise_speed:.2f}"
+    )
+
+    # Now apply large positive input — horse should exceed cruise speed
+    for _ in range(100):
+        engine.step([HorseAction(extra_tangential=5.0) for _ in range(HORSE_COUNT)])
+    obs_fast = engine.get_observations()
+    fast_vel = obs_fast[0]["tangential_vel"]
+    assert fast_vel > cruise_speed + 0.5, (
+        f"Large input: vel {fast_vel:.2f} should be well above cruise {cruise_speed:.2f}"
+    )
+
+    # Apply large negative input — horse should go below cruise speed
+    engine.reset()
+    for _ in range(100):
+        engine.step([HorseAction() for _ in range(HORSE_COUNT)])
+    for _ in range(50):
+        engine.step([HorseAction(extra_tangential=-5.0) for _ in range(HORSE_COUNT)])
+    obs_slow = engine.get_observations()
+    slow_vel = obs_slow[0]["tangential_vel"]
+    assert slow_vel < cruise_speed - 0.5, (
+        f"Negative input: vel {slow_vel:.2f} should be well below cruise {cruise_speed:.2f}"
+    )
+
+
 def test_obs_array_matches_schema():
     """Verify obs_to_array() output matches the shared obs_schema.json."""
     with open("obs_schema.json") as f:

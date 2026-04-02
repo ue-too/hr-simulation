@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Union
 
 import numpy as np
 
@@ -38,6 +38,7 @@ PHYS_HZ: int = 240
 PHYS_SUBSTEPS: int = 8
 
 NORMAL_DAMP: float = 0.5
+CRUISE_BLEND_THRESHOLD: float = 1.0  # jockey input (m/s²) at which auto-cruise fully fades out
 
 # Track wide enough for MAX_HORSE_COUNT horses centered + clearance
 TRACK_HALF_WIDTH: float = HORSE_SPACING * MAX_HORSE_COUNT / 2 + HORSE_HALF_WIDTH  # ~10.325 m
@@ -77,7 +78,7 @@ class CurveSegment:
     slope: float = 0.0  # grade (rise/run), positive = uphill
 
 
-TrackSegment = StraightSegment | CurveSegment
+TrackSegment = Union[StraightSegment, CurveSegment]
 
 
 @dataclass(frozen=True)

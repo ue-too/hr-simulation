@@ -25,6 +25,7 @@ from horse_racing.types import (
     HORSE_COUNT,
     HORSE_SPACING,
     MAX_REL_HORSES,
+    CRUISE_BLEND_THRESHOLD,
     NORMAL_DAMP,
     PHYS_HZ,
     PHYS_SUBSTEPS,
@@ -254,6 +255,11 @@ class HorseRacingEngine:
             for hs in self.horses:
                 integrate(hs.body, hs.effective_attrs.weight, self.dt)
                 hs.body.clear_force()
+                # Clamp: horses cannot reverse
+                if hs.frame is not None:
+                    tang_vel = float(np.dot(hs.body.velocity, hs.frame.tangential))
+                    if tang_vel < 0:
+                        hs.body.velocity -= tang_vel * hs.frame.tangential
 
         # 4. Post-step: update navigators, progress, orientation
         for hs in self.horses:
@@ -316,14 +322,23 @@ class HorseRacingEngine:
         else:
             centripetal = 0.0
 
-        # Auto-cruise toward cruise speed
+        # Auto-cruise toward cruise speed, fading out as jockey input increases
         speed_change = eff.cruise_speed - tangential_vel
 
         extra_tangential = action.extra_tangential * eff.forward_accel
         extra_normal = action.extra_normal * eff.turn_accel
 
-        tangential_accel = speed_change + extra_tangential
+        # Fade auto-cruise only when jockey opposes it (e.g. pushing faster
+        # while auto-cruise pulls back toward cruise). When they agree in
+        # direction, stack at full strength so a stopped horse always recovers.
+        if speed_change * extra_tangential < 0:
+            cruise_weight = max(0.0, 1.0 - abs(extra_tangential) / CRUISE_BLEND_THRESHOLD)
+        else:
+            cruise_weight = 1.0
+        tangential_accel = cruise_weight * speed_change + extra_tangential
         if tangential_vel >= eff.max_speed and tangential_accel > 0:
+            tangential_accel = 0.0
+        if tangential_vel <= 0.0 and tangential_accel < 0:
             tangential_accel = 0.0
 
         # Slope gravity: uphill decelerates, downhill accelerates
