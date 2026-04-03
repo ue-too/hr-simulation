@@ -30,6 +30,7 @@ class HorseRacingSingleEnv(gym.Env):
         min_skills: int = 1,
         max_skills: int = 3,
         skill_reward_scale: float = 10.0,
+        skill_physics: bool = True,
     ) -> None:
         super().__init__()
         self.track_path = track_path
@@ -56,6 +57,7 @@ class HorseRacingSingleEnv(gym.Env):
         self._min_skills = min_skills
         self._max_skills = max_skills
         self._skill_reward_scale = skill_reward_scale
+        self._skill_physics = skill_physics
 
         self._step_count = 0
         self._prev_obs: dict | None = None
@@ -78,7 +80,8 @@ class HorseRacingSingleEnv(gym.Env):
         # Generate skill-biased genome for trainee (horse 0)
         genomes = [skill_biased_genome(self._active_skills)] if self._active_skills else None
         self.engine.reset(genomes=genomes)
-        self.engine.active_skills = self._active_skills
+        if self._skill_physics:
+            self.engine.active_skills = self._active_skills
 
         all_obs = self.engine.get_observations()
         self._prev_obs = all_obs[0]

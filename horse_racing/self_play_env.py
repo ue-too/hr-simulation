@@ -46,6 +46,7 @@ class SelfPlayEnv(gym.Env):
         min_skills: int = 1,
         max_skills: int = 3,
         skill_reward_scale: float = 10.0,
+        skill_physics: bool = True,
     ) -> None:
         super().__init__()
         self.tracks = [tracks] if isinstance(tracks, str) else list(tracks)
@@ -78,6 +79,7 @@ class SelfPlayEnv(gym.Env):
         self._min_skills = min_skills
         self._max_skills = max_skills
         self._skill_reward_scale = skill_reward_scale
+        self._skill_physics = skill_physics
 
         self._step_count = 0
         self._prev_obs: dict | None = None
@@ -131,7 +133,8 @@ class SelfPlayEnv(gym.Env):
             genomes.append(random_genome())
 
         self.engine = HorseRacingEngine(track, config, genomes=genomes)
-        self.engine.active_skills = self._active_skills
+        if self._skill_physics:
+            self.engine.active_skills = self._active_skills
 
         # Stagger opponents ahead of trainee for overtake training
         if self.stagger_range[1] > 0:
