@@ -113,6 +113,61 @@ def default_genome() -> HorseGenome:
     return genome
 
 
+_SKILL_TRAIT_BIASES: dict[str, dict[str, float]] = {
+    "pace_pressure": {"cruise_speed": 0.75, "max_speed": 0.8, "drain_rate_mult": 0.75},
+    "stamina_management": {"stamina": 0.8, "drain_rate_mult": 0.2},
+    "sprint_timing": {"max_speed": 0.75, "forward_accel": 0.7},
+    "drafting_exploit": {},
+    "cornering_line": {"cornering_grip": 0.8, "turn_accel": 0.7},
+    "overtake": {"forward_accel": 0.7, "turn_accel": 0.7, "pushing_power": 0.75},
+}
+
+_BIAS_CONCENTRATION: float = 8.0
+
+
+def skill_biased_genome(active_skills: set) -> HorseGenome:
+    """Generate a random genome biased toward traits that align with active skills.
+
+    Uses Beta distribution sampling with concentration=8 for ~0.15 std dev.
+    Multiple skills: biases are averaged. No skills: returns default_genome().
+    """
+    from random import betavariate
+
+    if not active_skills:
+        return default_genome()
+
+    # Merge biases from all active skills (average when overlapping)
+    trait_biases: dict[str, list[float]] = {}
+    for skill in active_skills:
+        for trait, bias in _SKILL_TRAIT_BIASES.get(skill, {}).items():
+            trait_biases.setdefault(trait, []).append(bias)
+
+    merged: dict[str, float] = {
+        trait: sum(vals) / len(vals) for trait, vals in trait_biases.items()
+    }
+
+    genome = HorseGenome()
+    for trait in TRAIT_RANGES:
+        center = merged.get(trait, 0.5)
+        # Clamp away from 0/1 to keep Beta well-defined
+        center = max(0.05, min(0.95, center))
+        alpha = center * _BIAS_CONCENTRATION
+        beta = (1.0 - center) * _BIAS_CONCENTRATION
+        sire = betavariate(alpha, beta)
+        dam = betavariate(alpha, beta)
+        genome.core[trait] = Gene(sire=sire, dam=dam)
+
+    # Default modifier genes
+    from horse_racing.modifiers import MODIFIER_REGISTRY
+    for mod_id in MODIFIER_REGISTRY:
+        genome.modifiers[mod_id] = (
+            Gene(sire=0.5, dam=0.5),
+            Gene(sire=0.5, dam=0.5),
+        )
+
+    return genome
+
+
 def random_genome() -> HorseGenome:
     genome = HorseGenome()
     for trait in TRAIT_RANGES:

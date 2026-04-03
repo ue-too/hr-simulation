@@ -41,6 +41,7 @@ class ModifierContext:
     current_stamina: float
     max_stamina: float
     track_surface: str = "dry"  # "dry", "wet", "heavy"
+    active_skills: set = field(default_factory=set)  # skill IDs active this episode
 
 
 # ---------------------------------------------------------------------------
@@ -203,3 +204,102 @@ MODIFIER_REGISTRY: dict[str, ModifierDefinition] = {
         effects=[ModifierEffect(target="drain_rate_mult", pct=-0.20)],  # 10-20% less drain
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Skill-based physics modifiers (active when skill flag is set)
+# ---------------------------------------------------------------------------
+
+def _cond_skill_pace_pressure(ctx: ModifierContext) -> bool:
+    return "pace_pressure" in ctx.active_skills
+
+
+def _cond_skill_stamina_management(ctx: ModifierContext) -> bool:
+    return "stamina_management" in ctx.active_skills
+
+
+def _cond_skill_sprint_timing(ctx: ModifierContext) -> bool:
+    return "sprint_timing" in ctx.active_skills and ctx.track_progress[ctx.horse_index] > 0.75
+
+
+def _cond_skill_drafting_exploit(ctx: ModifierContext) -> bool:
+    return "drafting_exploit" in ctx.active_skills and cond_drafting(ctx)
+
+
+def _cond_skill_cornering_line(ctx: ModifierContext) -> bool:
+    return "cornering_line" in ctx.active_skills
+
+
+def _cond_skill_overtake(ctx: ModifierContext) -> bool:
+    return "overtake" in ctx.active_skills
+
+
+SKILL_MODIFIER_IDS: list[str] = [
+    "skill_pace_pressure",
+    "skill_stamina_management",
+    "skill_sprint_timing",
+    "skill_drafting_exploit",
+    "skill_cornering_line",
+    "skill_overtake",
+]
+
+_SKILL_MODIFIER_DEFS: dict[str, ModifierDefinition] = {
+    "skill_pace_pressure": ModifierDefinition(
+        id="skill_pace_pressure",
+        description="Pace pressure: push hard, drain fast",
+        condition=_cond_skill_pace_pressure,
+        effects=[
+            ModifierEffect(target="max_speed", pct=0.08),
+            ModifierEffect(target="forward_accel", pct=0.05),
+            ModifierEffect(target="drain_rate_mult", pct=0.15),
+        ],
+    ),
+    "skill_stamina_management": ModifierDefinition(
+        id="skill_stamina_management",
+        description="Stamina management: conserve energy, slightly slower",
+        condition=_cond_skill_stamina_management,
+        effects=[
+            ModifierEffect(target="drain_rate_mult", pct=-0.25),
+            ModifierEffect(target="max_speed", pct=-0.05),
+        ],
+    ),
+    "skill_sprint_timing": ModifierDefinition(
+        id="skill_sprint_timing",
+        description="Sprint timing: burst after 75% progress",
+        condition=_cond_skill_sprint_timing,
+        effects=[
+            ModifierEffect(target="max_speed", pct=0.10),
+            ModifierEffect(target="forward_accel", pct=0.10),
+        ],
+    ),
+    "skill_drafting_exploit": ModifierDefinition(
+        id="skill_drafting_exploit",
+        description="Drafting exploit: extra cruise boost when drafting",
+        condition=_cond_skill_drafting_exploit,
+        effects=[
+            ModifierEffect(target="cruise_speed", pct=0.08),
+        ],
+    ),
+    "skill_cornering_line": ModifierDefinition(
+        id="skill_cornering_line",
+        description="Cornering line: better grip and turn speed",
+        condition=_cond_skill_cornering_line,
+        effects=[
+            ModifierEffect(target="cornering_grip", pct=0.15),
+            ModifierEffect(target="turn_accel", pct=0.05),
+        ],
+    ),
+    "skill_overtake": ModifierDefinition(
+        id="skill_overtake",
+        description="Overtake: more accel and pushing power",
+        condition=_cond_skill_overtake,
+        effects=[
+            ModifierEffect(target="forward_accel", pct=0.10),
+            ModifierEffect(target="turn_accel", pct=0.08),
+            ModifierEffect(target="pushing_power", flat=0.05),
+        ],
+    ),
+}
+
+# Merge into the main registry
+MODIFIER_REGISTRY.update(_SKILL_MODIFIER_DEFS)

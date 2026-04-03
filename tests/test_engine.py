@@ -195,3 +195,120 @@ def test_obs_array_matches_schema():
     assert len(schema["fields"]) == schema["size"], (
         f"Schema field count {len(schema['fields'])} != declared size {schema['size']}"
     )
+
+
+# ── Skill-physics modifier tests ──────────────────────────────────────
+
+
+def test_skill_modifiers_change_effective_attrs():
+    """pace_pressure skill should increase max_speed and drain_rate_mult."""
+    engine = HorseRacingEngine(SIMPLE_OVAL)
+    engine.active_skills = {"pace_pressure"}
+    actions = [HorseAction() for _ in range(HORSE_COUNT)]
+    engine.step(actions)
+
+    hs0 = engine.horses[0]
+    base_max_speed = hs0.base_attrs.max_speed
+    base_drain = hs0.base_attrs.drain_rate_mult
+
+    # Effective should be boosted by skill modifier
+    assert hs0.effective_attrs.max_speed > base_max_speed, (
+        f"pace_pressure should increase max_speed: {hs0.effective_attrs.max_speed} <= {base_max_speed}"
+    )
+    assert hs0.effective_attrs.drain_rate_mult > base_drain, (
+        f"pace_pressure should increase drain: {hs0.effective_attrs.drain_rate_mult} <= {base_drain}"
+    )
+
+
+def test_skill_modifiers_only_affect_horse_0():
+    """Skill modifiers should only apply to horse 0 (trainee)."""
+    config = EngineConfig(horse_count=3)
+    engine = HorseRacingEngine(SIMPLE_OVAL, config=config)
+    engine.active_skills = {"pace_pressure"}
+    actions = [HorseAction() for _ in range(3)]
+    engine.step(actions)
+
+    # Horse 1 and 2 should have base attrs (no skill boost)
+    for i in [1, 2]:
+        hs = engine.horses[i]
+        assert abs(hs.effective_attrs.max_speed - hs.base_attrs.max_speed) < 2.0, (
+            f"Horse {i} should not get skill modifier boost"
+        )
+
+
+def test_sprint_timing_progress_gated():
+    """sprint_timing should only activate after 75% progress."""
+    engine = HorseRacingEngine(SIMPLE_OVAL)
+    engine.active_skills = {"sprint_timing"}
+
+    # Run a few steps (horse is at start, progress < 0.75)
+    actions = [HorseAction(extra_tangential=3.0) for _ in range(HORSE_COUNT)]
+    for _ in range(10):
+        engine.step(actions)
+
+    hs0 = engine.horses[0]
+    assert hs0.track_progress < 0.75, "Horse should not be at 75% yet"
+    # sprint_timing should NOT be active
+    active_ids = {m.id for m in hs0.runtime.active_modifiers}
+    assert "skill_sprint_timing" not in active_ids, (
+        "sprint_timing should not activate before 75% progress"
+    )
+
+    # Run until past 75%
+    for _ in range(500):
+        engine.step(actions)
+        if engine.horses[0].track_progress > 0.75:
+            break
+
+    if engine.horses[0].track_progress > 0.75:
+        engine.step(actions)
+        active_ids = {m.id for m in engine.horses[0].runtime.active_modifiers}
+        assert "skill_sprint_timing" in active_ids, (
+            "sprint_timing should activate after 75% progress"
+        )
+
+
+def test_stamina_management_reduces_drain():
+    """stamina_management skill should reduce drain_rate_mult."""
+    engine = HorseRacingEngine(SIMPLE_OVAL)
+    engine.active_skills = {"stamina_management"}
+    actions = [HorseAction() for _ in range(HORSE_COUNT)]
+    engine.step(actions)
+
+    hs0 = engine.horses[0]
+    assert hs0.effective_attrs.drain_rate_mult < hs0.base_attrs.drain_rate_mult, (
+        f"stamina_management should reduce drain: "
+        f"{hs0.effective_attrs.drain_rate_mult} >= {hs0.base_attrs.drain_rate_mult}"
+    )
+
+
+def test_no_skills_uses_base_attrs():
+    """With no skills, effective attrs should match base (plus genome modifiers only)."""
+    engine = HorseRacingEngine(SIMPLE_OVAL)
+    # active_skills defaults to empty set
+    actions = [HorseAction() for _ in range(HORSE_COUNT)]
+    engine.step(actions)
+
+    hs0 = engine.horses[0]
+    # Should be close to base (genome modifiers may differ slightly)
+    assert abs(hs0.effective_attrs.max_speed - hs0.base_attrs.max_speed) < 2.0
+
+
+def test_skill_biased_genome_distribution():
+    """skill_biased_genome should produce genes biased toward skill traits."""
+    from horse_racing.genome import skill_biased_genome, express_genome
+
+    # Generate many genomes for pace_pressure
+    max_speeds = []
+    for _ in range(100):
+        genome = skill_biased_genome({"pace_pressure"})
+        attrs = express_genome(genome)
+        max_speeds.append(attrs.max_speed)
+
+    mean_max_speed = np.mean(max_speeds)
+    # Bias center is 0.8, trait range is [16.0, 20.0], so expected ~19.2
+    # With Beta(6.4, 1.6) std ~0.12 → trait std ~0.48
+    # Mean should be well above midpoint (18.0)
+    assert mean_max_speed > 18.5, (
+        f"pace_pressure genomes should bias max_speed high: mean={mean_max_speed:.2f}"
+    )

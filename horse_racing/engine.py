@@ -16,7 +16,10 @@ from horse_racing.genome import (
     modifier_is_present,
     modifier_strength,
 )
-from horse_racing.modifiers import ActiveModifier, MODIFIER_IDS, ModifierContext, MODIFIER_REGISTRY
+from horse_racing.modifiers import (
+    ActiveModifier, MODIFIER_IDS, MODIFIER_REGISTRY, ModifierContext,
+    SKILL_MODIFIER_IDS,
+)
 from horse_racing.physics import integrate, resolve_all_collisions, resolve_horse_collisions, resolve_wall_collisions
 from horse_racing.stamina import HorseRuntimeState, apply_exhaustion, update_stamina
 from horse_racing.track import compute_rail_bboxes, load_track
@@ -91,6 +94,8 @@ class HorseRacingEngine:
         self.dt = 1.0 / PHYS_HZ
         self.tick: int = 0
         self.horse_count = self.config.horse_count
+
+        self.active_skills: set[str] = set()
 
         # Initialize horses
         self.horses: list[HorseState] = []
@@ -291,6 +296,7 @@ class HorseRacingEngine:
                 current_stamina=hs.runtime.current_stamina,
                 max_stamina=hs.base_attrs.stamina,
                 track_surface=self.config.track_surface,
+                active_skills=self.active_skills if i == 0 else set(),
             )
 
             active: list[ActiveModifier] = []
@@ -303,6 +309,13 @@ class HorseRacingEngine:
                 if defn.condition(ctx):
                     strength = modifier_strength(str_gene)
                     active.append(ActiveModifier(id=mod_id, strength=strength))
+
+            # Skill-based physics modifiers (horse 0 / trainee only)
+            if i == 0 and self.active_skills:
+                for skill_mod_id in SKILL_MODIFIER_IDS:
+                    defn = MODIFIER_REGISTRY[skill_mod_id]
+                    if defn.condition(ctx):
+                        active.append(ActiveModifier(id=skill_mod_id, strength=1.0))
 
             hs.runtime.active_modifiers = active
             hs.effective_attrs = resolve_effective(hs.base_attrs, active)

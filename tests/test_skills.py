@@ -1,4 +1,5 @@
 """Tests for composable jockey skill reward functions."""
+from __future__ import annotations
 
 import pytest
 

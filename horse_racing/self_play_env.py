@@ -16,6 +16,7 @@ import onnxruntime as ort
 from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
+from horse_racing.genome import random_genome, skill_biased_genome
 from horse_racing.reward import compute_reward
 from horse_racing.types import HorseAction, OBS_SIZE, SKILL_IDS
 
@@ -115,16 +116,7 @@ class SelfPlayEnv(gym.Env):
             horse_count=horse_count,
             track_surface=self._base_config.track_surface,
         )
-        self.engine = HorseRacingEngine(track, config)
-
-        # Stagger opponents ahead of trainee for overtake training
-        if self.stagger_range[1] > 0:
-            offsets = [0.0]  # trainee stays at start
-            for _ in range(self._num_opponents):
-                offsets.append(random.uniform(self.stagger_range[0], self.stagger_range[1]))
-            self.engine.stagger_horses(offsets)
-
-        # Sample skills if random mode
+        # Sample skills if random mode (before genome generation)
         if self._random_skills:
             # 20% no-skill episodes for contrastive learning signal
             if random.random() < 0.2:
@@ -132,6 +124,21 @@ class SelfPlayEnv(gym.Env):
             else:
                 k = random.randint(self._min_skills, self._max_skills)
                 self._active_skills = set(random.sample(SKILL_IDS, k))
+
+        # Generate skill-biased genome for trainee, random for opponents
+        genomes = [skill_biased_genome(self._active_skills)]
+        for _ in range(self._num_opponents):
+            genomes.append(random_genome())
+
+        self.engine = HorseRacingEngine(track, config, genomes=genomes)
+        self.engine.active_skills = self._active_skills
+
+        # Stagger opponents ahead of trainee for overtake training
+        if self.stagger_range[1] > 0:
+            offsets = [0.0]  # trainee stays at start
+            for _ in range(self._num_opponents):
+                offsets.append(random.uniform(self.stagger_range[0], self.stagger_range[1]))
+            self.engine.stagger_horses(offsets)
 
         all_obs = self.engine.get_observations()
         self._all_prev_obs = list(all_obs)

@@ -9,6 +9,7 @@ import numpy as np
 from gymnasium import spaces
 
 from horse_racing.engine import EngineConfig, HorseRacingEngine
+from horse_racing.genome import skill_biased_genome
 from horse_racing.reward import compute_reward
 from horse_racing.types import HorseAction, OBS_SIZE, SKILL_IDS
 
@@ -61,7 +62,6 @@ class HorseRacingSingleEnv(gym.Env):
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
-        self.engine.reset()
         self._step_count = 0
         self._prev_placement: int = 1
 
@@ -74,6 +74,11 @@ class HorseRacingSingleEnv(gym.Env):
             else:
                 k = _rng.randint(self._min_skills, self._max_skills)
                 self._active_skills = set(_rng.sample(SKILL_IDS, k))
+
+        # Generate skill-biased genome for trainee (horse 0)
+        genomes = [skill_biased_genome(self._active_skills)] if self._active_skills else None
+        self.engine.reset(genomes=genomes)
+        self.engine.active_skills = self._active_skills
 
         all_obs = self.engine.get_observations()
         self._prev_obs = all_obs[0]
