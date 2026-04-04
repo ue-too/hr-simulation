@@ -35,7 +35,7 @@ def main():
                         help="Policy ID to export")
     parser.add_argument("--output", type=str, default="checkpoints/horse_jockey_rllib.onnx",
                         help="Output ONNX file path")
-    parser.add_argument("--track", type=str, default="tracks/curriculum_1_straight.json")
+    parser.add_argument("--track", type=str, default="tracks/tokyo.json")
     args = parser.parse_args()
 
     ray.init(runtime_env={"working_dir": None})
@@ -47,10 +47,20 @@ def main():
         PPOConfig()
         .environment(
             env=HorseRacingRLlibEnv,
-            env_config={"track_path": args.track},
+            env_config={
+                "track_paths": [args.track],
+                "min_horse_count": 4,
+                "max_horse_count": 4,
+            },
         )
         .env_runners(num_env_runners=0)
         .framework("torch")
+        .rl_module(
+            model_config={
+                "fcnet_hiddens": [256, 256],
+                "fcnet_activation": "relu",
+            },
+        )
         .multi_agent(
             policies={args.policy: PolicySpec()},
             policy_mapping_fn=lambda agent_id, *a, **kw: args.policy,
@@ -67,7 +77,8 @@ def main():
     module.eval()
 
     # Test forward pass
-    obs_dim = 102
+    from horse_racing.types import OBS_SIZE
+    obs_dim = OBS_SIZE  # 108
     dummy = torch.zeros(1, obs_dim, dtype=torch.float32)
     with torch.no_grad():
         result = module.forward_inference({"obs": dummy})
