@@ -3,7 +3,7 @@ name = "horse-racing-rl"
 version = "0.1.0"
 description = "Reinforcement learning multi-agents for horse racing simulation"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "gymnasium>=1.0.0",
     "pettingzoo>=1.24.0",
@@ -19,13 +19,16 @@ dependencies = [
     "tensorboard>=2.20.0",
 ]
 
-[project.optional-dependencies]
-ray = ["ray[rllib]>=2.9.0"]
-dev = ["pytest>=8.0.0", "pytest-cov>=5.0.0"]
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ray[rllib]>=2.9.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["horse_racing"]

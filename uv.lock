@@ -669,12 +669,10 @@ dependencies = [
     { name = "tensorboard" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
-]
-ray = [
     { name = "ray", extra = ["rllib"] },
 ]
 
@@ -688,15 +686,18 @@ requires-dist = [
     { name = "onnxscript", specifier = ">=0.6.2" },
     { name = "pandas", specifier = ">=3.0.1" },
     { name = "pettingzoo", specifier = ">=1.24.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0.0" },
-    { name = "ray", extras = ["rllib"], marker = "extra == 'ray'", specifier = ">=2.9.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "stable-baselines3", specifier = ">=2.3.0" },
     { name = "supersuit", specifier = ">=3.9.0" },
     { name = "tensorboard", specifier = ">=2.20.0" },
 ]
-provides-extras = ["ray", "dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "ray", extras = ["rllib"], specifier = ">=2.9.0" },
+]
 
 [[package]]
 name = "httpcore"
