@@ -55,12 +55,12 @@ def compute_reward(
     if finished and placement < len(FINISH_ORDER_BONUS):
         reward += FINISH_ORDER_BONUS[placement]
 
-    # 3. Progress nudge (much smaller than v1's 200x)
+    # 3. Progress nudge — main learning signal, must dominate alive penalty
     delta_progress = progress - prev_progress
-    reward += 30.0 * delta_progress
+    reward += 200.0 * delta_progress
 
-    # 4. Alive penalty (time pressure)
-    reward -= 0.1
+    # 4. Alive penalty (light time pressure — must be << progress reward)
+    reward -= 0.01
 
     # 5. Collision penalty
     if collided:

@@ -79,8 +79,9 @@ class HorseRacingEnv(gym.Env):
         self._est_race_time = self._track_length / 16.0  # rough estimate
 
         # Per-tick timing
-        self._dt = 1.0 / PHYS_HZ
-        self._substep_dt = self._dt / PHYS_SUBSTEPS
+        # Each env step = PHYS_SUBSTEPS physics ticks at PHYS_HZ
+        self._substep_dt = 1.0 / PHYS_HZ              # physics tick: 1/240s
+        self._dt = self._substep_dt * PHYS_SUBSTEPS    # env step:    1/30s
 
         # State (initialized in reset)
         self._profiles: list[HorseProfile] = []
@@ -247,7 +248,7 @@ class HorseRacingEnv(gym.Env):
             )
 
         # Update frames and check for finish
-        self._sim_time += self._dt * PHYS_SUBSTEPS
+        self._sim_time += self._dt
         for i in range(self.num_horses):
             self._frames[i] = self._navigators[i].update(self._bodies[i].position)
             if not self._finished[i] and self._navigators[i].completed_lap:
