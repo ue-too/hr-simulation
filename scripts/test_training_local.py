@@ -140,7 +140,7 @@ print("  PASSED\n")
 
 # --- Step 3: Build algorithm ---
 print("=" * 60)
-print("Step 3: Build SAC algorithm with GRU model")
+print("Step 3: Build PPO algorithm with GRU model")
 print("=" * 60)
 
 config = (
@@ -168,7 +168,7 @@ config = (
         lambda_=0.95,
     )
     .env_runners(
-        num_env_runners=1,
+        num_env_runners=0,  # single-process for local testing
         rollout_fragment_length=64,
     )
     .resources(
