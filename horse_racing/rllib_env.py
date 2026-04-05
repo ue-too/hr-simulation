@@ -9,6 +9,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+from horse_racing.bt_jockey import BTJockey, make_bt_jockey
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.genome import random_genome
 from horse_racing.reward import ARCHETYPES, compute_reward
@@ -57,6 +58,9 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
 
         self.track_surface = config.get("track_surface", "dry")
 
+        # BT opponent ratio: fraction of horses controlled by behavior tree
+        self.bt_opponent_ratio = config.get("bt_opponent_ratio", 0.0)
+
         # possible_agents must cover the max to satisfy RLlib
         self.possible_agents = [f"horse_{i}" for i in range(self.max_horse_count)]
         self._agent_ids = set(self.possible_agents)
@@ -86,6 +90,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         self._prev_placements: dict[str, int] = {}
         self._done_agents: set[str] = set()
         self.engine: HorseRacingEngine | None = None
+        self._bt_agents: dict[str, BTJockey] = {}  # agent_id -> BTJockey
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         self._rng = random.Random(seed)
@@ -119,8 +124,23 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         else:
             self._archetypes_this_ep = dict(self.archetypes)
 
-        # Set active agents for this episode
-        self.agents = [f"horse_{i}" for i in range(self._horse_count)]
+        # Assign BT opponents — pick a random subset of horses
+        self._bt_agents = {}
+        if self.bt_opponent_ratio > 0 and self._horse_count > 1:
+            bt_count = max(1, int(self._horse_count * self.bt_opponent_ratio))
+            # Never make all horses BT — at least one must be RL
+            bt_count = min(bt_count, self._horse_count - 1)
+            bt_indices = self._rng.sample(range(self._horse_count), bt_count)
+            archetype_choices = ARCHETYPES + [None]  # type: ignore[list-item]
+            for idx in bt_indices:
+                archetype = self._archetypes_this_ep.get(f"horse_{idx}")
+                self._bt_agents[f"horse_{idx}"] = make_bt_jockey(archetype)
+
+        # Set active RL agents for this episode (exclude BT-controlled horses)
+        self.agents = [
+            f"horse_{i}" for i in range(self._horse_count)
+            if f"horse_{i}" not in self._bt_agents
+        ]
 
         # Get initial observations
         all_obs = self.engine.get_observations()
@@ -129,9 +149,11 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         self._prev_placements = {}
         for i in range(self._horse_count):
             agent_id = f"horse_{i}"
-            observations[agent_id] = self.engine.obs_to_array(all_obs[i])
             self._prev_obs[agent_id] = all_obs[i]
             self._prev_placements[agent_id] = i + 1
+            # Only return obs for RL agents
+            if agent_id not in self._bt_agents:
+                observations[agent_id] = self.engine.obs_to_array(all_obs[i])
 
         infos = {agent_id: {} for agent_id in observations}
         return observations, infos
@@ -139,10 +161,14 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
     def step(self, action_dict: dict[str, np.ndarray]):
         self._step_count += 1
 
+        # Build action list: RL actions from action_dict, BT actions computed here
         action_list = []
+        bt_obs = self.engine.get_observations() if self._bt_agents else None
         for i in range(self._horse_count):
             agent_id = f"horse_{i}"
-            if agent_id in action_dict:
+            if agent_id in self._bt_agents:
+                action_list.append(self._bt_agents[agent_id].compute_action(bt_obs[i]))
+            elif agent_id in action_dict:
                 a = action_dict[agent_id]
                 action_list.append(HorseAction(float(a[0]), float(a[1])))
             else:
@@ -162,7 +188,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
 
         for i in range(self._horse_count):
             agent_id = f"horse_{i}"
-            if agent_id in self._done_agents:
+            if agent_id in self._done_agents or agent_id in self._bt_agents:
                 continue
 
             obs_curr = all_obs[i]
@@ -189,10 +215,23 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
             if obs_curr["finished"] or any_truncated:
                 self._done_agents.add(agent_id)
 
-        self.agents = [a for a in self.possible_agents[:self._horse_count]
-                       if a not in self._done_agents]
+        # Track done state for BT agents too (needed for __all__ check)
+        for i in range(self._horse_count):
+            agent_id = f"horse_{i}"
+            if agent_id in self._bt_agents:
+                if all_obs[i]["finished"] or any_truncated:
+                    self._done_agents.add(agent_id)
 
-        terminateds["__all__"] = len(self.agents) == 0
+        # Active RL agents only
+        self.agents = [
+            a for a in self.possible_agents[:self._horse_count]
+            if a not in self._done_agents and a not in self._bt_agents
+        ]
+
+        terminateds["__all__"] = all(
+            f"horse_{i}" in self._done_agents
+            for i in range(self._horse_count)
+        )
         truncateds["__all__"] = any_truncated
 
         return observations, rewards, terminateds, truncateds, infos
