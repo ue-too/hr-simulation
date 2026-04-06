@@ -87,6 +87,18 @@ class HorseRacingSingleEnv(gym.Env):
         if self._skill_physics:
             self.engine.active_skills = self._active_skills
 
+        # Scale stamina for long tracks so all horses can finish with pacing.
+        # Reference: 900m track needs no scaling. Longer tracks get proportionally
+        # more stamina so the agent can learn strategy instead of being doomed.
+        track_length = self.engine.horses[0].navigator._total_length
+        REFERENCE_LENGTH = 900.0
+        if track_length > REFERENCE_LENGTH:
+            stamina_scale = track_length / REFERENCE_LENGTH
+            for hs in self.engine.horses:
+                hs.base_attrs.stamina *= stamina_scale
+                hs.effective_attrs.stamina *= stamina_scale
+                hs.runtime.current_stamina *= stamina_scale
+
         # Randomize starting lane: swap horse 0's position with a random horse
         if self.engine.horse_count > 1:
             swap_idx = self.np_random.integers(0, self.engine.horse_count)
