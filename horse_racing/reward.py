@@ -114,10 +114,11 @@ def compute_reward(
     reward -= 0.2 * progress
 
     # ── Near-finish bonus ────────────────────────────────────────────
-    # Scaled by stamina so horses with reserves (realistic "kick") are
-    # rewarded more than depleted ones.
-    if progress > 0.9:
-        reward += 0.5 * max(stamina, 0.1)
+    # Reward pushing hard in final stretch. Scaled by speed above cruise
+    # so the agent learns to kick, not coast to the finish.
+    if progress > 0.85 and max_spd > cruise_spd + 1e-6:
+        above_cruise = max(vel - cruise_spd, 0.0) / (max_spd - cruise_spd)
+        reward += 1.5 * above_cruise
 
     # ── Placement bonus ──────────────────────────────────────────────
     # Per-tick incentive to be ahead of others. Strong enough to make
@@ -131,32 +132,36 @@ def compute_reward(
         reward -= 2.0
 
     # ── Stamina budget ──────────────────────────────────────────────
-    # Drain-only model: penalize burning faster than a linear baseline.
-    # A horse that conserves gets a small bonus; one that overspends
-    # gets a scaled penalty.
+    # Penalize overspending relative to linear baseline. No bonus for
+    # conservation — the agent should use its stamina, not hoard it.
     expected_stamina = 1.0 - progress
     stamina_margin = stamina - expected_stamina
     if stamina_margin < -0.15:
         reward -= 2.0 * abs(stamina_margin + 0.15)
-    elif stamina_margin > 0.05:
-        reward += 0.3 * min(stamina_margin, 0.2)
 
     # Hard exhaustion penalty aligned with apply_exhaustion threshold
     if stamina < 0.30:
         reward -= 3.0
 
     # ── Pacing bonus ─────────────────────────────────────────────────
-    # Early: reward cruising efficiently. Late: reward kicking.
+    # Early: reward cruising efficiently. Late: reward kicking hard.
     if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
         reward += 0.8
-    elif progress > 0.8 and vel > cruise_spd and stamina > 0.25:
-        reward += 1.0
+    elif progress > 0.75 and vel > cruise_spd and stamina > 0.25:
+        # Stronger kick bonus that ramps with race progress
+        kick_intensity = (progress - 0.75) / 0.25  # 0 at 75%, 1 at 100%
+        reward += 2.0 * kick_intensity
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
+    # Also penalize finishing with too much stamina — wasted reserves
+    # mean the agent was too conservative and could have raced faster.
     if finish_order is not None:
         idx = min(finish_order - 1, len(FINISH_ORDER_BONUS) - 1)
         reward += FINISH_ORDER_BONUS[idx]
+        # Ideal finish: 10-30% stamina. Penalize excess above 40%.
+        if stamina > 0.40:
+            reward -= 20.0 * (stamina - 0.40)
 
     # ── Overtaking bonus ─────────────────────────────────────────────
     # Strong reward for gaining positions — the main incentive for
