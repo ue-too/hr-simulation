@@ -63,17 +63,17 @@ def compute_reward(
     raw_efficiency = obs_curr.get("path_efficiency", 1.0)
     # Amplify efficiency: inside line (eff > 1) boosted, outside (eff < 1) penalized more
     efficiency = 1.0 + 2.0 * (raw_efficiency - 1.0)
-    reward += 200.0 * delta_progress * (1.0 + 2.0 * progress) * efficiency
+    reward += 30.0 * delta_progress * (1.0 + 2.0 * progress) * efficiency
 
     # ── Speed bonus ──────────────────────────────────────────────────
     # Rewards going fast relative to max capability.
     # Scaled by stamina so exhausted horses aren't rewarded for redlining.
     if max_spd > 1e-6:
-        reward += 0.3 * (vel / max_spd) * max(stamina, 0.1)
+        reward += 0.1 * (vel / max_spd) * max(stamina, 0.1)
 
     # Rewards pushing beyond auto-cruise. Also scaled by stamina.
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
-        reward += 0.2 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1)
+        reward += 0.05 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1)
 
     # ── Cornering line bonus ─────────────────────────────────────────
     # Reward taking the inside line on curves. Negative displacement
@@ -92,14 +92,21 @@ def compute_reward(
         if displacement > -3.0 and normal_vel < 0:
             reward += 0.5 * min(abs(normal_vel), 2.0)
 
-    # ── Straight-segment drift penalty ─────────────────────────────────
-    # Discourage wandering toward the outer rail on straights.
-    # Asymmetric: outer drift penalized more since inner is preferable
-    # approaching curves.
+    # ── Straight-segment positioning ───────────────────────────────────
+    # Pre-position toward inside before upcoming curves. Signed curvature:
+    # positive = CCW curve (inside = negative displacement),
+    # negative = CW curve (inside = positive displacement).
     if curvature <= 0:
         displacement = obs_curr.get("displacement", 0.0)
+        next_curv = obs_curr.get("next_curvature", 0.0)
+        if next_curv != 0:
+            # Reward being on the inside of the upcoming curve.
+            # For positive curvature: inside = negative displacement → -disp * curv > 0
+            # For negative curvature: inside = positive displacement → -disp * curv > 0
+            inside_score = -displacement * next_curv
+            reward += 0.3 * max(inside_score, 0.0)
         if displacement > 0:
-            reward -= 0.05 * min(displacement / TRACK_HALF_WIDTH, 1.0)
+            reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0)
 
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating
@@ -130,20 +137,20 @@ def compute_reward(
     expected_stamina = 1.0 - progress
     stamina_margin = stamina - expected_stamina
     if stamina_margin < -0.15:
-        reward -= 0.5 * abs(stamina_margin + 0.15)
+        reward -= 2.0 * abs(stamina_margin + 0.15)
     elif stamina_margin > 0.05:
-        reward += 0.05 * min(stamina_margin, 0.2)
+        reward += 0.3 * min(stamina_margin, 0.2)
 
     # Hard exhaustion penalty aligned with apply_exhaustion threshold
     if stamina < 0.30:
-        reward -= 0.6 * (1.0 - stamina / 0.30)
+        reward -= 3.0
 
     # ── Pacing bonus ─────────────────────────────────────────────────
     # Early: reward cruising efficiently. Late: reward kicking.
     if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
-        reward += 0.08
+        reward += 0.8
     elif progress > 0.8 and vel > cruise_spd and stamina > 0.25:
-        reward += 0.1
+        reward += 1.0
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
@@ -160,7 +167,7 @@ def compute_reward(
 
     # ── Archetype-specific reward shaping ────────────────────────────
     if archetype:
-        reward += _archetype_bonus(
+        reward += 5.0 * _archetype_bonus(
             archetype, obs_prev, obs_curr, placement, num_horses, progress,
         )
 

@@ -8,6 +8,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
+from horse_racing.bt_jockey import PERSONALITIES, make_bt_jockey
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.genome import skill_biased_genome
 from horse_racing.reward import compute_reward
@@ -31,6 +32,7 @@ class HorseRacingSingleEnv(gym.Env):
         max_skills: int = 3,
         skill_reward_scale: float = 10.0,
         skill_physics: bool = True,
+        bt_opponents: bool = True,
     ) -> None:
         super().__init__()
         self.track_path = track_path
@@ -58,9 +60,11 @@ class HorseRacingSingleEnv(gym.Env):
         self._max_skills = max_skills
         self._skill_reward_scale = skill_reward_scale
         self._skill_physics = skill_physics
+        self._bt_opponents = bt_opponents
 
         self._step_count = 0
         self._prev_obs: dict | None = None
+        self._bt_jockeys: list = []
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         super().reset(seed=seed)
@@ -83,6 +87,24 @@ class HorseRacingSingleEnv(gym.Env):
         if self._skill_physics:
             self.engine.active_skills = self._active_skills
 
+        # Randomize starting lane: swap horse 0's position with a random horse
+        if self.engine.horse_count > 1:
+            swap_idx = self.np_random.integers(0, self.engine.horse_count)
+            if swap_idx != 0:
+                h0 = self.engine.horses[0]
+                h1 = self.engine.horses[swap_idx]
+                h0.body.position, h1.body.position = (
+                    h1.body.position.copy(), h0.body.position.copy(),
+                )
+
+        # Create BT opponents for horses 1..N
+        self._bt_jockeys = []
+        if self._bt_opponents:
+            personality_choices = list(PERSONALITIES.keys())
+            for _ in range(1, self.engine.horse_count):
+                arch = self.np_random.choice(personality_choices)
+                self._bt_jockeys.append(make_bt_jockey(arch))
+
         all_obs = self.engine.get_observations()
         self._prev_obs = all_obs[0]
         obs_array = self.engine.obs_to_array(all_obs[0], active_skills=self._active_skills)
@@ -92,9 +114,14 @@ class HorseRacingSingleEnv(gym.Env):
         self._step_count += 1
 
         actions = [HorseAction(float(action[0]), float(action[1]))]
-        # Other horses get zero actions
-        for _ in range(1, self.engine.horse_count):
-            actions.append(HorseAction())
+        # Other horses: BT opponents or zero actions
+        if self._bt_jockeys:
+            bt_obs = self.engine.get_observations()
+            for j, bt in enumerate(self._bt_jockeys):
+                actions.append(bt.compute_action(bt_obs[j + 1]))
+        else:
+            for _ in range(1, self.engine.horse_count):
+                actions.append(HorseAction())
 
         self.engine.step(actions)
 

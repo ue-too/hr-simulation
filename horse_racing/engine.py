@@ -22,7 +22,7 @@ from horse_racing.modifiers import (
 )
 from horse_racing.physics import integrate, resolve_all_collisions, resolve_horse_collisions, resolve_wall_collisions
 from horse_racing.stamina import HorseRuntimeState, apply_exhaustion, update_stamina
-from horse_racing.track import compute_rail_bboxes, load_track
+from horse_racing.track import compute_rail_bboxes, compute_segment_length, load_track
 from horse_racing.track_navigator import TrackNavigator
 from horse_racing.types import (
     HORSE_COUNT,
@@ -385,6 +385,22 @@ class HorseRacingEngine:
                 displacement = float(np.dot(hs.body.position - start, frame.normal))
             curvature = 1.0 / frame.turn_radius if frame.turn_radius < 1e6 else 0.0
 
+            # Upcoming curvature: scan ahead for next curve segment
+            next_curvature = 0.0
+            dist_to_next_curve = 0.0
+            lookahead = hs.navigator.lookahead_segments(5)
+            accumulated_dist = 0.0
+            for k, la_seg in enumerate(lookahead):
+                if k == 0:
+                    # Current segment — skip
+                    continue
+                if isinstance(la_seg, CurveSegment):
+                    sign = 1.0 if la_seg.angle_span >= 0 else -1.0
+                    next_curvature = sign / la_seg.radius
+                    dist_to_next_curve = accumulated_dist
+                    break
+                accumulated_dist += compute_segment_length(la_seg)
+
             # Path efficiency: on curves, inner line covers less ground per
             # unit of angular progress.  seg.radius / actual_radius gives the
             # ratio of centerline arc to the horse's real arc (< 1 when wide).
@@ -443,6 +459,8 @@ class HorseRacingEngine:
                     ],
                     "cornering_margin": cornering_margin,
                     "path_efficiency": path_efficiency,
+                    "next_curvature": next_curvature,
+                    "distance_to_next_curve": dist_to_next_curve,
                     "slope": frame.slope,
                     "pushing_power": hs.effective_attrs.pushing_power,
                     "push_resistance": hs.effective_attrs.push_resistance,
@@ -481,9 +499,9 @@ class HorseRacingEngine:
     def obs_to_array(
         self, obs: dict, active_skills: set[str] | None = None,
     ) -> np.ndarray:
-        """Convert observation dict to flat numpy array (108,).
+        """Convert observation dict to flat numpy array (110,).
 
-        Layout: 8 ego + 76 relative (19×4) + 10 track/attr + 8 modifier flags + 6 skill flags.
+        Layout: 8 ego + 76 relative (19×4) + 12 track/attr + 8 modifier flags + 6 skill flags.
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
@@ -517,6 +535,8 @@ class HorseRacingEngine:
                 obs["drain_rate_mult"],
                 obs["placement_norm"],
                 obs["num_horses"] / 20.0,  # normalize to [0, 1]
+                obs.get("next_curvature", 0.0),
+                obs.get("distance_to_next_curve", 0.0) / 100.0,  # normalize: 100m scale
                 *modifier_flags,
                 *skill_flags,
             ],

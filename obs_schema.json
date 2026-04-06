@@ -1,7 +1,7 @@
 {
-  "version": 5,
+  "version": 6,
   "description": "Observation vector layout shared between Python training and browser inference.",
-  "size": 108,
+  "size": 110,
   "fields": [
     {
       "index": 0,
@@ -475,71 +475,81 @@
     },
     {
       "index": 94,
+      "name": "next_curvature",
+      "type": "continuous"
+    },
+    {
+      "index": 95,
+      "name": "distance_to_next_curve_norm",
+      "type": "continuous"
+    },
+    {
+      "index": 96,
       "name": "mod_drafting",
       "type": "binary"
     },
     {
-      "index": 95,
+      "index": 97,
       "name": "mod_pack_pressure",
       "type": "binary"
     },
     {
-      "index": 96,
+      "index": 98,
       "name": "mod_pack_anxiety",
       "type": "binary"
     },
     {
-      "index": 97,
+      "index": 99,
       "name": "mod_front_runner",
       "type": "binary"
     },
     {
-      "index": 98,
+      "index": 100,
       "name": "mod_closer",
       "type": "binary"
     },
     {
-      "index": 99,
+      "index": 101,
       "name": "mod_mudder",
       "type": "binary"
     },
     {
-      "index": 100,
+      "index": 102,
       "name": "mod_gate_speed",
       "type": "binary"
     },
     {
-      "index": 101,
+      "index": 103,
       "name": "mod_endurance",
       "type": "binary"
     },
     {
-      "index": 102,
+      "index": 104,
       "name": "skill_stamina_management",
       "type": "binary"
     },
     {
-      "index": 103,
+      "index": 105,
       "name": "skill_sprint_timing",
       "type": "binary"
     },
     {
-      "index": 104,
+      "index": 106,
       "name": "skill_overtake",
       "type": "binary"
     },
     {
-      "index": 105,
+      "index": 107,
       "name": "skill_drafting_exploit",
       "type": "binary"
     },
     {
-      "index": 106,
+      "index": 108,
       "name": "skill_cornering_line",
       "type": "binary"
     },
     {
-      "index": 107,
+      "index": 109,
       "name": "skill_pace_pressure",
       "type": "binary"
     }

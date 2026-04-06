@@ -153,6 +153,17 @@ class TrackNavigator:
 
         return (base + along) / self._total_length
 
+    def lookahead_segments(self, count: int = 3) -> list[TrackSegment]:
+        """Return the next `count` segments starting from current."""
+        result = []
+        for i in range(count):
+            idx = self.segment_index + i
+            if idx < len(self.segments):
+                result.append(self.segments[idx])
+            else:
+                result.append(self.segments[-1])
+        return result
+
     # ------------------------------------------------------------------
     # Frame computation
     # ------------------------------------------------------------------

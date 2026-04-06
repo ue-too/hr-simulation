@@ -64,6 +64,31 @@ PERSONALITIES: dict[str, JockeyPersonality] = {
         overtake_aggression=0.8,
         draft_seeking=0.3,
     ),
+    # Degenerate personalities for RL robustness training
+    "full_throttle": JockeyPersonality(
+        early_effort=1.0,
+        kick_progress=0.0,
+        stamina_reserve=0.0,
+        inside_bias=0.3,
+        overtake_aggression=0.9,
+        draft_seeking=0.0,
+    ),
+    "passive": JockeyPersonality(
+        early_effort=0.0,
+        kick_progress=1.0,
+        stamina_reserve=0.0,
+        inside_bias=0.3,
+        overtake_aggression=0.0,
+        draft_seeking=0.0,
+    ),
+    "blocker": JockeyPersonality(
+        early_effort=0.4,
+        kick_progress=0.80,
+        stamina_reserve=0.20,
+        inside_bias=0.9,
+        overtake_aggression=0.2,
+        draft_seeking=0.0,
+    ),
 }
 
 DEFAULT_PERSONALITY = JockeyPersonality()
@@ -202,7 +227,20 @@ def _cornering_line(obs: dict, p: JockeyPersonality) -> ActionOutput | None:
     displacement = obs["displacement"]
 
     if abs(curvature) < 1e-4:
-        # On straights, gently drift toward center (displacement 0)
+        # On straights, pre-position for upcoming curve
+        # Signed curvature: positive = CCW (inside = negative disp),
+        # negative = CW (inside = positive disp)
+        next_curv = obs.get("next_curvature", 0.0)
+        if abs(next_curv) > 1e-6:
+            # Target inside: negative displacement for positive curvature, positive for negative
+            inside_sign = -1.0 if next_curv > 0 else 1.0
+            target_disp = inside_sign * 6.0 * p.inside_bias
+            if (displacement - target_disp) * inside_sign > 0:
+                # Not yet inside enough
+                error = target_disp - displacement
+                steer = error * 0.3
+                return ActionOutput(tangential=0.0, normal=_clamp(steer, -2.0, 2.0), weight=0.3)
+        # Otherwise gently drift toward center
         if abs(displacement) > 2.0:
             correction = -displacement * 0.3
             return ActionOutput(tangential=0.0, normal=_clamp(correction, -2.0, 2.0), weight=0.2)
@@ -315,7 +353,7 @@ def build_default_tree() -> BTNode:
 
         # Mid race: pace + drafting + cornering
         Condition(
-            lambda obs, p: obs["track_progress"] < 0.75,
+            lambda obs, p: obs["track_progress"] < p.kick_progress,
             Blend([
                 Leaf(_pace_control),
                 Leaf(_drafting),
@@ -325,7 +363,7 @@ def build_default_tree() -> BTNode:
 
         # Final stretch: kick + overtake + cornering
         Condition(
-            lambda obs, p: obs["track_progress"] >= 0.75,
+            lambda obs, p: obs["track_progress"] >= p.kick_progress,
             Blend([
                 Leaf(_kick),
                 Leaf(_overtake_line),
