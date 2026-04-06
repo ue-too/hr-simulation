@@ -461,6 +461,7 @@ class HorseRacingEngine:
                     "path_efficiency": path_efficiency,
                     "next_curvature": next_curvature,
                     "distance_to_next_curve": dist_to_next_curve,
+                    "track_length": hs.navigator._total_length,
                     "slope": frame.slope,
                     "pushing_power": hs.effective_attrs.pushing_power,
                     "push_resistance": hs.effective_attrs.push_resistance,
@@ -499,9 +500,9 @@ class HorseRacingEngine:
     def obs_to_array(
         self, obs: dict, active_skills: set[str] | None = None,
     ) -> np.ndarray:
-        """Convert observation dict to flat numpy array (110,).
+        """Convert observation dict to flat numpy array (111,).
 
-        Layout: 8 ego + 76 relative (19×4) + 12 track/attr + 8 modifier flags + 6 skill flags.
+        Layout: 8 ego + 76 relative (19×4) + 13 track/attr + 8 modifier flags + 6 skill flags.
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
@@ -537,6 +538,7 @@ class HorseRacingEngine:
                 obs["num_horses"] / 20.0,  # normalize to [0, 1]
                 obs.get("next_curvature", 0.0),
                 obs.get("distance_to_next_curve", 0.0) / 100.0,  # normalize: 100m scale
+                obs.get("track_length", 900.0) / 2000.0,  # normalize: 2000m scale
                 *modifier_flags,
                 *skill_flags,
             ],

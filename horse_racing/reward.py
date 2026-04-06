@@ -69,11 +69,11 @@ def compute_reward(
     # Rewards going fast relative to max capability.
     # Scaled by stamina so exhausted horses aren't rewarded for redlining.
     if max_spd > 1e-6:
-        reward += 0.1 * (vel / max_spd) * max(stamina, 0.1)
+        reward += 0.03 * (vel / max_spd) * max(stamina, 0.1)
 
     # Rewards pushing beyond auto-cruise. Also scaled by stamina.
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
-        reward += 0.05 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1)
+        reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1)
 
     # ── Cornering line bonus ─────────────────────────────────────────
     # Reward taking the inside line on curves. Negative displacement
