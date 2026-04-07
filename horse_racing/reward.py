@@ -14,8 +14,10 @@ from __future__ import annotations
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
 
-# Finish order bonuses: 1st place gets the most, 4th gets the least
-FINISH_ORDER_BONUS = [50.0, 30.0, 15.0, 5.0]
+# Finish order bonuses — scaled so winning is ~10% of total episode reward
+# (~10,000 per-tick total). Large gaps between places incentivize racing
+# for position, not just finishing.
+FINISH_ORDER_BONUS = [1000.0, 500.0, 200.0, 50.0]
 
 # Reference tick count for a 900m track at 240Hz, ~15 m/s avg speed.
 # Used to normalize per-tick rewards so total accumulation is
@@ -167,8 +169,10 @@ def compute_reward(
         idx = min(finish_order - 1, len(FINISH_ORDER_BONUS) - 1)
         reward += FINISH_ORDER_BONUS[idx]
         # Ideal finish: 10-30% stamina. Penalize excess above 40%.
+        # Scaled to match finish bonus magnitude — hoarding 60% stamina
+        # costs 400 points, enough to drop from 1st to 2nd place value.
         if stamina > 0.40:
-            reward -= 20.0 * (stamina - 0.40)
+            reward -= 200.0 * (stamina - 0.40)
 
     # ── Overtaking bonus ─────────────────────────────────────────────
     # Strong reward for gaining positions — the main incentive for
