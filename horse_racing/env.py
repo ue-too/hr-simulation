@@ -43,9 +43,13 @@ class HorseRacingSingleEnv(gym.Env):
 
         self.engine = HorseRacingEngine(track_path, self.config)
 
+        # Action space: network outputs in [-1, 1], remapped in step() to
+        # useful physics range. Tangential [-2, 7] covers deceleration through
+        # hard kick. Normal [-3, 3] covers steering. This ensures SB3's
+        # initial Gaussian (mean ~0, std ~1) explores the useful range.
         self.action_space = spaces.Box(
-            low=np.array([-10.0, -5.0], dtype=np.float32),
-            high=np.array([10.0, 5.0], dtype=np.float32),
+            low=np.array([-1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0], dtype=np.float32),
         )
 
         self.observation_space = spaces.Box(
@@ -129,10 +133,22 @@ class HorseRacingSingleEnv(gym.Env):
         obs_array = self.engine.obs_to_array(all_obs[0], active_skills=self._active_skills)
         return obs_array, {"active_skills": self._active_skills}
 
+    @staticmethod
+    def remap_action(action: np.ndarray) -> tuple[float, float]:
+        """Map network output [-1, 1] to physics action range.
+
+        Tangential: [-1, 1] → [-2, 7]  (center 2.5, half-range 4.5)
+        Normal:     [-1, 1] → [-3, 3]  (center 0, half-range 3)
+        """
+        tang = float(action[0]) * 4.5 + 2.5
+        norm = float(action[1]) * 3.0
+        return tang, norm
+
     def step(self, action: np.ndarray):
         self._step_count += 1
 
-        actions = [HorseAction(float(action[0]), float(action[1]))]
+        tang, norm = self.remap_action(action)
+        actions = [HorseAction(tang, norm)]
         # Other horses: BT opponents or zero actions
         if self._bt_jockeys:
             bt_obs = self.engine.get_observations()

@@ -140,7 +140,7 @@ def main() -> None:
             batch_size=512,
             n_epochs=10,
             clip_range=0.2,
-            ent_coef=0.005,
+            ent_coef=0.02,
             policy_kwargs=policy_kwargs,
             verbose=0,
             device="auto",

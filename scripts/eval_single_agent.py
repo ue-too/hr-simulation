@@ -119,6 +119,7 @@ def run_race(
     max_steps: int,
     verbose: bool = False,
     reward_phase: int = 3,
+    remap: bool = False,
 ) -> RaceResult:
     """Run one race: ONNX horse 0 vs BT opponents."""
     shared = random_genome()
@@ -165,7 +166,15 @@ def run_race(
         # ONNX action for horse 0
         obs_array = engine.obs_to_array(all_obs[0]).astype(np.float32)
         raw = session.run(None, {"obs": obs_array.reshape(1, -1)})[0][0]
-        onnx_action = np.clip(raw, [-10.0, -5.0], [10.0, 5.0])
+        if remap:
+            # Model outputs raw [-1, 1]; remap to physics range
+            onnx_action = np.array([
+                raw[0] * 4.5 + 2.5,  # tang: [-1,1] -> [-2, 7]
+                raw[1] * 3.0,         # norm: [-1,1] -> [-3, 3]
+            ])
+        else:
+            onnx_action = raw
+        onnx_action = np.clip(onnx_action, [-10.0, -5.0], [10.0, 5.0])
 
         actions = [HorseAction(float(onnx_action[0]), float(onnx_action[1]))]
         for j, bt in enumerate(bt_jockeys):
@@ -431,6 +440,8 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Print per-race details")
     parser.add_argument("--reward-phase", type=int, default=3, choices=[1, 2, 3],
                         help="Reward phase: 1=race/kick, 2=+cornering, 3=+archetype/skills")
+    parser.add_argument("--remap", action="store_true",
+                        help="Apply action remapping (for models trained with [-1,1] action space)")
     args = parser.parse_args()
 
     session = ort.InferenceSession(args.model)
@@ -457,6 +468,7 @@ def main():
                 session, track_name, track_path,
                 args.horses, args.max_steps, verbose=args.verbose,
                 reward_phase=args.reward_phase,
+                remap=args.remap,
             )
             all_races.append(race)
             rl = race.onnx_horse
