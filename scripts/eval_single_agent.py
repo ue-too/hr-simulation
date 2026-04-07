@@ -88,6 +88,8 @@ class HorseResult:
     final_stamina: float = 1.0
     min_stamina: float = 1.0
     collisions: int = 0
+    overtakes: int = 0       # times placement improved
+    been_overtaken: int = 0  # times placement worsened
     # Per-phase breakdown (only for ONNX agent)
     early: PhaseStats = field(default_factory=PhaseStats)
     mid: PhaseStats = field(default_factory=PhaseStats)
@@ -153,6 +155,7 @@ def run_race(
     # Track actual finish order (engine.get_placements only ranks by progress snapshot)
     finish_order_counter = 0
     actual_finish_order = [0] * horse_count  # 0 = not finished yet
+    prev_onnx_placement = horse_count  # assume starting last
 
     for step in range(max_steps):
         all_obs = engine.get_observations()
@@ -168,6 +171,15 @@ def run_race(
 
         engine.step(actions)
         new_obs = engine.get_observations()
+
+        # Track overtakes for horse 0
+        if not done[0]:
+            cur_placement = engine.get_placements()[0]
+            if cur_placement < prev_onnx_placement:
+                results.horses[0].overtakes += (prev_onnx_placement - cur_placement)
+            elif cur_placement > prev_onnx_placement:
+                results.horses[0].been_overtaken += (cur_placement - prev_onnx_placement)
+            prev_onnx_placement = cur_placement
 
         progress_0 = new_obs[0]["track_progress"]
 
@@ -250,9 +262,11 @@ def _print_race_detail(race: RaceResult):
           f"finished={rl.finished}, steps={rl.steps}")
     print(f"    Speed: avg={rl.avg_speed:.1f} max={rl.max_speed:.1f} m/s")
     print(f"    Stamina: final={rl.final_stamina:.0%} min={rl.min_stamina:.0%}")
-    print(f"    Collisions: {rl.collisions}")
+    print(f"    Collisions: {rl.collisions}  Overtakes: {rl.overtakes}  Been overtaken: {rl.been_overtaken}")
     print(f"    Phase actions (tangential) → early={rl.early.mean_tang:+.2f} "
           f"mid={rl.mid.mean_tang:+.2f} kick={rl.kick.mean_tang:+.2f}")
+    print(f"    Phase actions (normal/str) → early={rl.early.mean_norm:+.2f} "
+          f"mid={rl.mid.mean_norm:+.2f} kick={rl.kick.mean_norm:+.2f}")
     print(f"    Phase actions (max tang)   → early={rl.early.max_tang:+.2f} "
           f"mid={rl.mid.max_tang:+.2f} kick={rl.kick.max_tang:+.2f}")
     print(f"    Phase speeds               → early={rl.early.mean_speed:.1f} "
@@ -363,7 +377,12 @@ def print_summary(all_races: list[RaceResult], model_name: str):
     def _fmt_pct(vals):
         return f"{np.mean(vals):.0%}" if vals else "n/a"
 
+    early_norms = [r.onnx_horse.early.mean_norm for r in all_races if r.onnx_horse.early.norm_actions]
+    mid_norms = [r.onnx_horse.mid.mean_norm for r in all_races if r.onnx_horse.mid.norm_actions]
+    kick_norms = [r.onnx_horse.kick.mean_norm for r in all_races if r.onnx_horse.kick.norm_actions]
+
     print(f"    Mean tangential action → early={_fmt(early_tangs)}  mid={_fmt(mid_tangs)}  kick={_fmt(kick_tangs)}")
+    print(f"    Mean normal (steering) → early={_fmt(early_norms)}  mid={_fmt(mid_norms)}  kick={_fmt(kick_norms)}")
     print(f"    Max tangential (kick)  → {_fmt(kick_max)}")
     print(f"    Mean speed             → early={_fmt_spd(early_spd)}  mid={_fmt_spd(mid_spd)}  kick={_fmt_spd(kick_spd)}")
     print(f"    Mean stamina           → early={_fmt_pct(early_stam)}  mid={_fmt_pct(mid_stam)}  kick={_fmt_pct(kick_stam)}")
@@ -377,6 +396,24 @@ def print_summary(all_races: list[RaceResult], model_name: str):
             print(f"    ⚠  EMPTY TANK: stamina depleted before kick phase — nothing left to push with")
         elif kick_stam and np.mean(kick_stam) > 0.30:
             print(f"    ⚠  STAMINA HOARDING: model has stamina left but doesn't use it")
+
+    # --- Overtake analysis ---
+    total_overtakes = sum(r.onnx_horse.overtakes for r in all_races)
+    total_overtaken = sum(r.onnx_horse.been_overtaken for r in all_races)
+    n_races = len(all_races)
+    print(f"\n  OVERTAKE ANALYSIS:")
+    print(f"    Total overtakes:      {total_overtakes} ({total_overtakes/n_races:.1f}/race)")
+    print(f"    Total been overtaken: {total_overtaken} ({total_overtaken/n_races:.1f}/race)")
+    print(f"    Net position changes: {total_overtakes - total_overtaken:+d}")
+    if mid_norms or kick_norms:
+        avg_norm = np.mean((mid_norms or [0]) + (kick_norms or [0]))
+        norm_range = max(abs(np.min((mid_norms or [0]) + (kick_norms or [0]))),
+                         abs(np.max((mid_norms or [0]) + (kick_norms or [0]))))
+        if norm_range < 0.3:
+            print(f"    ⚠  LOW STEERING: normal actions avg {avg_norm:+.2f}, max |{norm_range:.2f}| "
+                  f"— model stays in lane, no active overtaking")
+        else:
+            print(f"    Steering activity: avg {avg_norm:+.2f}, max |{norm_range:.2f}|")
 
     print()
 

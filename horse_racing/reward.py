@@ -143,21 +143,26 @@ def compute_reward(
     # ── Stamina budget ──────────────────────────────────────────────
     # Penalize overspending relative to linear baseline. No bonus for
     # conservation — the agent should use its stamina, not hoard it.
+    # Fade out penalties after 75% progress — burning stamina in the
+    # final stretch is correct racing strategy, not a mistake.
+    late_fade = max(0.0, 1.0 - max(0.0, progress - 0.75) / 0.25)  # 1.0 until 75%, 0.0 at 100%
     expected_stamina = 1.0 - progress
     stamina_margin = stamina - expected_stamina
     if stamina_margin < -0.15:
-        reward -= 2.0 * abs(stamina_margin + 0.15) * tick_scale
+        reward -= 2.0 * abs(stamina_margin + 0.15) * tick_scale * late_fade
 
-    # Hard exhaustion penalty aligned with apply_exhaustion threshold
+    # Hard exhaustion penalty — fades out in final stretch so agent
+    # can deplete stamina for the kick without per-tick punishment.
     if stamina < 0.30:
-        reward -= 3.0 * tick_scale
+        reward -= 3.0 * tick_scale * late_fade
 
     # ── Pacing bonus ─────────────────────────────────────────────────
     # Early: reward cruising efficiently. Late: reward kicking hard.
     if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
         reward += 0.8 * tick_scale
-    elif progress > 0.75 and vel > cruise_spd and stamina > 0.25:
-        # Stronger kick bonus that ramps with race progress
+    elif progress > 0.75 and vel > cruise_spd:
+        # Stronger kick bonus that ramps with race progress.
+        # No stamina gate — reward kicking even when depleted.
         kick_intensity = (progress - 0.75) / 0.25  # 0 at 75%, 1 at 100%
         reward += 2.0 * kick_intensity * tick_scale
 
