@@ -96,6 +96,8 @@ class HorseRacingEngine:
         self.horse_count = self.config.horse_count
 
         self.active_skills: set[str] = set()
+        self._finish_order: list[int] = []
+        self._finish_count: int = 0
 
         # Initialize horses
         self.horses: list[HorseState] = []
@@ -112,10 +114,13 @@ class HorseRacingEngine:
             )
             self.horses.append(hs)
 
+        self._finish_order = [0] * self.horse_count
         self._place_horses()
 
     def reset(self, genomes: list[HorseGenome] | None = None) -> None:
         self.tick = 0
+        self._finish_order: list[int] = [0] * self.horse_count  # 0 = not finished
+        self._finish_count: int = 0
         for i, hs in enumerate(self.horses):
             if genomes and i < len(genomes):
                 hs.genome = genomes[i]
@@ -267,7 +272,7 @@ class HorseRacingEngine:
                         hs.body.velocity -= tang_vel * hs.frame.tangential
 
         # 4. Post-step: update navigators, progress, orientation
-        for hs in self.horses:
+        for i, hs in enumerate(self.horses):
             hs.frame = hs.navigator.update(hs.body.position)
             hs.track_progress = hs.navigator.compute_progress(hs.body.position)
             hs.body.orientation = math.atan2(hs.frame.tangential[1], hs.frame.tangential[0])
@@ -276,6 +281,8 @@ class HorseRacingEngine:
             if not hs.finished and hs.navigator.completed_lap:
                 hs.finished = True
                 hs.body.velocity[:] = 0.0
+                self._finish_count += 1
+                self._finish_order[i] = self._finish_count
 
     def _resolve_attributes(self) -> None:
         """Resolve modifiers and compute effective attributes for all horses."""
@@ -486,15 +493,30 @@ class HorseRacingEngine:
         return obs_list
 
     def get_placements(self) -> list[int]:
-        """Return 1-indexed placement for each horse based on track progress.
+        """Return 1-indexed placement for each horse.
 
-        1 = first place (highest progress), N = last place.
+        Finished horses are ranked by actual finish order (who crossed
+        the line first). Unfinished horses are ranked after all finishers,
+        ordered by track progress (highest first).
         """
-        progresses = [(i, hs.track_progress) for i, hs in enumerate(self.horses)]
-        progresses.sort(key=lambda x: -x[1])  # highest progress first
-        placements = [0] * len(self.horses)
-        for rank, (idx, _) in enumerate(progresses):
-            placements[idx] = rank + 1
+        n = len(self.horses)
+        placements = [0] * n
+
+        # Finished horses get their actual crossing order
+        for i in range(n):
+            if self._finish_order[i] > 0:
+                placements[i] = self._finish_order[i]
+
+        # Unfinished horses ranked after all finishers, by progress
+        unfinished = [
+            (i, self.horses[i].track_progress)
+            for i in range(n)
+            if self._finish_order[i] == 0
+        ]
+        unfinished.sort(key=lambda x: -x[1])
+        for rank, (idx, _) in enumerate(unfinished):
+            placements[idx] = self._finish_count + rank + 1
+
         return placements
 
     def obs_to_array(
