@@ -120,7 +120,8 @@ def run_race(
     verbose: bool = False,
 ) -> RaceResult:
     """Run one race: ONNX horse 0 vs BT opponents."""
-    genomes = [random_genome() for _ in range(horse_count)]
+    shared = random_genome()
+    genomes = [shared] * horse_count
     engine = HorseRacingEngine(track_path, EngineConfig(horse_count=horse_count), genomes=genomes)
 
     # Scale stamina for long tracks (same as training env)

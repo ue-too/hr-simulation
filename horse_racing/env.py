@@ -10,7 +10,7 @@ from gymnasium import spaces
 
 from horse_racing.bt_jockey import PERSONALITIES, make_bt_jockey
 from horse_racing.engine import EngineConfig, HorseRacingEngine
-from horse_racing.genome import skill_biased_genome
+from horse_racing.genome import random_genome, skill_biased_genome
 from horse_racing.reward import compute_reward
 from horse_racing.types import HorseAction, OBS_SIZE, SKILL_IDS
 
@@ -81,8 +81,13 @@ class HorseRacingSingleEnv(gym.Env):
                 k = _rng.randint(self._min_skills, self._max_skills)
                 self._active_skills = set(_rng.sample(SKILL_IDS, k))
 
-        # Generate skill-biased genome for trainee (horse 0)
-        genomes = [skill_biased_genome(self._active_skills)] if self._active_skills else None
+        # Generate genomes: all horses share the same random genome so no
+        # jockey gets a stat advantage — differences come from strategy only.
+        if self._active_skills:
+            shared = skill_biased_genome(self._active_skills)
+        else:
+            shared = random_genome()
+        genomes = [shared] * self.engine.horse_count
         self.engine.reset(genomes=genomes)
         if self._skill_physics:
             self.engine.active_skills = self._active_skills
