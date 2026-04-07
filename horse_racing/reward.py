@@ -76,13 +76,21 @@ def compute_reward(
 
     # ── Speed bonus ──────────────────────────────────────────────────
     # Rewards going fast relative to max capability.
-    # Scaled by stamina so exhausted horses aren't rewarded for redlining.
+    # Early race: scaled by stamina so exhausted horses aren't rewarded
+    # for redlining. Late race (>75%): no stamina scaling — burning
+    # stamina for speed is the correct play during the kick.
     if max_spd > 1e-6:
-        reward += 0.03 * (vel / max_spd) * max(stamina, 0.1) * tick_scale
+        if progress < 0.75:
+            reward += 0.03 * (vel / max_spd) * max(stamina, 0.1) * tick_scale
+        else:
+            reward += 0.03 * (vel / max_spd) * tick_scale
 
-    # Rewards pushing beyond auto-cruise. Also scaled by stamina.
+    # Rewards pushing beyond auto-cruise. Same stamina logic.
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
-        reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1) * tick_scale
+        if progress < 0.75:
+            reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1) * tick_scale
+        else:
+            reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * tick_scale
 
     # ── Cornering line bonus ─────────────────────────────────────────
     # Reward taking the inside line on curves. Negative displacement
@@ -160,11 +168,12 @@ def compute_reward(
     # Early: reward cruising efficiently. Late: reward kicking hard.
     if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
         reward += 0.8 * tick_scale
-    elif progress > 0.75 and vel > cruise_spd:
-        # Stronger kick bonus that ramps with race progress.
-        # No stamina gate — reward kicking even when depleted.
+    elif progress > 0.75 and vel > cruise_spd and max_spd > cruise_spd + 1e-6:
+        # Kick bonus proportional to speed above cruise — going 4 m/s
+        # above cruise pays 4x more than 1 m/s above. Ramps with progress.
         kick_intensity = (progress - 0.75) / 0.25  # 0 at 75%, 1 at 100%
-        reward += 2.0 * kick_intensity * tick_scale
+        above_cruise_ratio = (vel - cruise_spd) / (max_spd - cruise_spd)
+        reward += 3.0 * kick_intensity * above_cruise_ratio * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
@@ -178,6 +187,10 @@ def compute_reward(
         # costs 400 points, enough to drop from 1st to 2nd place value.
         if stamina > 0.40:
             reward -= 200.0 * (stamina - 0.40)
+        # Reward crossing the line at high speed — reinforces sprinting
+        # through the finish rather than coasting. ~150 points at max speed.
+        if max_spd > 1e-6:
+            reward += 150.0 * (vel / max_spd)
 
     # ── Overtaking bonus ─────────────────────────────────────────────
     # Strong reward for gaining positions — the main incentive for
