@@ -137,10 +137,10 @@ class HorseRacingSingleEnv(gym.Env):
     def remap_action(action: np.ndarray) -> tuple[float, float]:
         """Map network output [-1, 1] to physics action range.
 
-        Tangential: [-1, 1] → [-2, 7]  (center 2.5, half-range 4.5)
-        Normal:     [-1, 1] → [-3, 3]  (center 0, half-range 3)
+        Tangential: [-1, 1] → [-4.5, 4.5]  (center 0 = cruise, +4.5 = kick)
+        Normal:     [-1, 1] → [-3, 3]       (center 0, half-range 3)
         """
-        tang = float(action[0]) * 4.5 + 2.5
+        tang = float(action[0]) * 4.5
         norm = float(action[1]) * 3.0
         return tang, norm
 

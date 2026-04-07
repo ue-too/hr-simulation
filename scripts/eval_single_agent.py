@@ -167,10 +167,11 @@ def run_race(
         obs_array = engine.obs_to_array(all_obs[0]).astype(np.float32)
         raw = session.run(None, {"obs": obs_array.reshape(1, -1)})[0][0]
         if remap:
-            # Model outputs raw [-1, 1]; remap to physics range
+            # Model outputs raw [-1, 1]; clip then remap to physics range
+            clipped = np.clip(raw, -1.0, 1.0)
             onnx_action = np.array([
-                raw[0] * 4.5 + 2.5,  # tang: [-1,1] -> [-2, 7]
-                raw[1] * 3.0,         # norm: [-1,1] -> [-3, 3]
+                clipped[0] * 4.5,   # tang: [-1,1] -> [-4.5, 4.5]
+                clipped[1] * 3.0,   # norm: [-1,1] -> [-3, 3]
             ])
         else:
             onnx_action = raw
