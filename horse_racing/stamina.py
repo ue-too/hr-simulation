@@ -115,4 +115,14 @@ def apply_exhaustion(
             result.turn_accel * (0.5 + 0.5 * (ratio / 0.25)),
         )
 
+    # Cruise speed degrades when nearly empty — depleted horses slow
+    # below cruise, making pacing a real advantage over full throttle.
+    # 20% → 100%, 0% → 75% of base cruise speed.
+    if ratio < 0.20:
+        cruise_mult = 0.75 + 0.25 * (ratio / 0.20)
+        result.cruise_speed = max(
+            TRAIT_RANGES["max_speed"][0],
+            result.cruise_speed * cruise_mult,
+        )
+
     return result
