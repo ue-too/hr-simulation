@@ -235,11 +235,11 @@ def _cornering_line(obs: dict, p: JockeyPersonality) -> ActionOutput | None:
             # Target inside: negative displacement for positive curvature, positive for negative
             inside_sign = -1.0 if next_curv > 0 else 1.0
             target_disp = inside_sign * 6.0 * p.inside_bias
-            if (displacement - target_disp) * inside_sign > 0:
-                # Not yet inside enough
-                error = target_disp - displacement
-                steer = error * 0.3
-                return ActionOutput(tangential=0.0, normal=_clamp(steer, -2.0, 2.0), weight=0.3)
+            # Proportional control toward target — naturally gives zero at target,
+            # steers inward when outside, and gently corrects if overshooting.
+            error = target_disp - displacement
+            steer = error * 0.3
+            return ActionOutput(tangential=0.0, normal=_clamp(steer, -2.0, 2.0), weight=0.3)
         # Otherwise gently drift toward center
         if abs(displacement) > 2.0:
             correction = -displacement * 0.3
