@@ -17,6 +17,12 @@ from horse_racing.types import TRACK_HALF_WIDTH
 # Finish order bonuses: 1st place gets the most, 4th gets the least
 FINISH_ORDER_BONUS = [50.0, 30.0, 15.0, 5.0]
 
+# Reference tick count for a 900m track at 240Hz, ~15 m/s avg speed.
+# Used to normalize per-tick rewards so total accumulation is
+# track-length-independent. tick_scale = delta_progress * REF_TICKS ≈ 1.0
+# on the reference track.
+REF_TICKS = 14400.0
+
 # Archetype names
 ARCHETYPES = ["front_runner", "stalker", "closer", "presser"]
 
@@ -60,6 +66,7 @@ def compute_reward(
     # Accelerating reward: 1x at start → 3x near finish.
     # Scaled by path_efficiency so wider curve lines yield less reward.
     delta_progress = progress - obs_prev["track_progress"]
+    tick_scale = delta_progress * REF_TICKS
     raw_efficiency = obs_curr.get("path_efficiency", 1.0)
     # Amplify efficiency: inside line (eff > 1) boosted, outside (eff < 1) penalized more
     efficiency = 1.0 + 2.0 * (raw_efficiency - 1.0)
@@ -69,11 +76,11 @@ def compute_reward(
     # Rewards going fast relative to max capability.
     # Scaled by stamina so exhausted horses aren't rewarded for redlining.
     if max_spd > 1e-6:
-        reward += 0.03 * (vel / max_spd) * max(stamina, 0.1)
+        reward += 0.03 * (vel / max_spd) * max(stamina, 0.1) * tick_scale
 
     # Rewards pushing beyond auto-cruise. Also scaled by stamina.
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
-        reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1)
+        reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1) * tick_scale
 
     # ── Cornering line bonus ─────────────────────────────────────────
     # Reward taking the inside line on curves. Negative displacement
@@ -81,16 +88,16 @@ def compute_reward(
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
         displacement = obs_curr.get("displacement", 0.0)
-        reward += 3.0 * max(-displacement, 0.0) * curvature
+        reward += 3.0 * max(-displacement, 0.0) * curvature * tick_scale
         # Penalty for being OUTSIDE on curves (positive displacement)
         if displacement > 0:
-            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0
-        reward += 0.3 * efficiency
+            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0 * tick_scale
+        reward += 0.3 * efficiency * tick_scale
 
         # Reward actively steering inward when not already deep inside
         normal_vel = obs_curr.get("normal_vel", 0.0)
         if displacement > -3.0 and normal_vel < 0:
-            reward += 0.5 * min(abs(normal_vel), 2.0)
+            reward += 0.5 * min(abs(normal_vel), 2.0) * tick_scale
 
     # ── Straight-segment positioning ───────────────────────────────────
     # Pre-position toward inside before upcoming curves. Signed curvature:
@@ -104,27 +111,27 @@ def compute_reward(
             # For positive curvature: inside = negative displacement → -disp * curv > 0
             # For negative curvature: inside = positive displacement → -disp * curv > 0
             inside_score = -displacement * next_curv
-            reward += 0.3 * max(inside_score, 0.0)
+            reward += 0.3 * max(inside_score, 0.0) * tick_scale
         if displacement > 0:
-            reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0)
+            reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0) * tick_scale
 
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating
     # per-tick bonuses. Scales with progress: light early, heavy late.
-    reward -= 0.2 * progress
+    reward -= 0.2 * progress * tick_scale
 
     # ── Near-finish bonus ────────────────────────────────────────────
     # Reward pushing hard in final stretch. Scaled by speed above cruise
     # so the agent learns to kick, not coast to the finish.
     if progress > 0.85 and max_spd > cruise_spd + 1e-6:
         above_cruise = max(vel - cruise_spd, 0.0) / (max_spd - cruise_spd)
-        reward += 1.5 * above_cruise
+        reward += 1.5 * above_cruise * tick_scale
 
     # ── Placement bonus ──────────────────────────────────────────────
     # Per-tick incentive to be ahead of others. Strong enough to make
     # overtaking (via steering) worthwhile.
     if num_horses > 1:
-        reward += 0.4 * (num_horses - placement) / (num_horses - 1)
+        reward += 0.4 * (num_horses - placement) / (num_horses - 1) * tick_scale
 
     # ── Collision penalty ────────────────────────────────────────────
     # High enough that bumping doesn't pay off from placement gains.
@@ -137,20 +144,20 @@ def compute_reward(
     expected_stamina = 1.0 - progress
     stamina_margin = stamina - expected_stamina
     if stamina_margin < -0.15:
-        reward -= 2.0 * abs(stamina_margin + 0.15)
+        reward -= 2.0 * abs(stamina_margin + 0.15) * tick_scale
 
     # Hard exhaustion penalty aligned with apply_exhaustion threshold
     if stamina < 0.30:
-        reward -= 3.0
+        reward -= 3.0 * tick_scale
 
     # ── Pacing bonus ─────────────────────────────────────────────────
     # Early: reward cruising efficiently. Late: reward kicking hard.
     if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
-        reward += 0.8
+        reward += 0.8 * tick_scale
     elif progress > 0.75 and vel > cruise_spd and stamina > 0.25:
         # Stronger kick bonus that ramps with race progress
         kick_intensity = (progress - 0.75) / 0.25  # 0 at 75%, 1 at 100%
-        reward += 2.0 * kick_intensity
+        reward += 2.0 * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
@@ -174,13 +181,13 @@ def compute_reward(
     if archetype:
         reward += 5.0 * _archetype_bonus(
             archetype, obs_prev, obs_curr, placement, num_horses, progress,
-        )
+        ) * tick_scale
 
     # ── Skill-conditioned reward shaping ─────────────────────────────
     if active_skills:
         reward += skill_reward_scale * compute_skill_bonus(
             active_skills, obs_curr, obs_prev, placement, num_horses,
-        )
+        ) * tick_scale
 
     return reward
 

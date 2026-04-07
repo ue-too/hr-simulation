@@ -216,16 +216,18 @@ class TestSkillRewardScale:
         assert diff > 1.0, f"Scaled skill diff {diff} too small to influence learning"
 
     def test_scale_1_matches_unscaled(self):
-        """Scale of 1.0 should match the old unscaled behavior."""
+        """Scale of 1.0 should match the raw bonus * tick_scale."""
         obs_curr = _make_obs(track_progress=0.85, tangential_vel=18.0, stamina_ratio=0.5)
         obs_prev = _make_obs(track_progress=0.83, tangential_vel=17.0)
         skills = {"sprint_timing", "pace_pressure"}
 
         raw_bonus = compute_skill_bonus(skills, obs_curr, obs_prev, 2, 4)
 
-        from horse_racing.reward import compute_reward
+        from horse_racing.reward import compute_reward, REF_TICKS
+        delta_progress = 0.85 - 0.83
+        tick_scale = delta_progress * REF_TICKS
         reward_no = compute_reward(obs_prev, obs_curr, False, active_skills=None)
         reward_s1 = compute_reward(
             obs_prev, obs_curr, False, active_skills=skills, skill_reward_scale=1.0,
         )
-        assert abs((reward_s1 - reward_no) - raw_bonus) < 1e-6
+        assert abs((reward_s1 - reward_no) - raw_bonus * tick_scale) < 1e-6
