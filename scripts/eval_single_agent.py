@@ -118,6 +118,7 @@ def run_race(
     horse_count: int,
     max_steps: int,
     verbose: bool = False,
+    reward_phase: int = 3,
 ) -> RaceResult:
     """Run one race: ONNX horse 0 vs BT opponents."""
     shared = random_genome()
@@ -227,6 +228,7 @@ def run_race(
                 placement=engine.get_placements()[i],
                 num_horses=horse_count,
                 finish_order=finish_place,
+                reward_phase=reward_phase,
             )
             total_rewards[i] += r
 
@@ -427,6 +429,8 @@ def main():
     parser.add_argument("--horses", type=int, default=4, help="Total horses (1 ONNX + N-1 BT)")
     parser.add_argument("--tracks", type=str, nargs="*", default=None, help="Specific track files")
     parser.add_argument("--verbose", action="store_true", help="Print per-race details")
+    parser.add_argument("--reward-phase", type=int, default=3, choices=[1, 2, 3],
+                        help="Reward phase: 1=race/kick, 2=+cornering, 3=+archetype/skills")
     args = parser.parse_args()
 
     session = ort.InferenceSession(args.model)
@@ -452,6 +456,7 @@ def main():
             race = run_race(
                 session, track_name, track_path,
                 args.horses, args.max_steps, verbose=args.verbose,
+                reward_phase=args.reward_phase,
             )
             all_races.append(race)
             rl = race.onnx_horse

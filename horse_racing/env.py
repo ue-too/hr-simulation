@@ -33,6 +33,7 @@ class HorseRacingSingleEnv(gym.Env):
         skill_reward_scale: float = 10.0,
         skill_physics: bool = True,
         bt_opponents: bool = True,
+        reward_phase: int = 3,
     ) -> None:
         super().__init__()
         self.track_path = track_path
@@ -61,6 +62,7 @@ class HorseRacingSingleEnv(gym.Env):
         self._skill_reward_scale = skill_reward_scale
         self._skill_physics = skill_physics
         self._bt_opponents = bt_opponents
+        self._reward_phase = reward_phase
 
         self._step_count = 0
         self._prev_obs: dict | None = None
@@ -156,6 +158,7 @@ class HorseRacingSingleEnv(gym.Env):
             prev_placement=self._prev_placement,
             active_skills=self._active_skills if self._active_skills else None,
             skill_reward_scale=self._skill_reward_scale,
+            reward_phase=self._reward_phase,
         )
         self._prev_placement = placements[0]
 

@@ -28,6 +28,15 @@ REF_TICKS = 14400.0
 # Archetype names
 ARCHETYPES = ["front_runner", "stalker", "closer", "presser"]
 
+# Phase weight profiles: each phase scales reward groups differently.
+# Phase 1 focuses on racing/kicking, with cornering/archetype as faint background.
+# Phase 2 brings cornering to full weight. Phase 3 brings everything to 1.0.
+PHASE_WEIGHTS: dict[int, dict[str, float]] = {
+    1: {"racing": 1.0, "cornering": 0.1, "archetype": 0.0},
+    2: {"racing": 1.0, "cornering": 1.0, "archetype": 0.1},
+    3: {"racing": 1.0, "cornering": 1.0, "archetype": 1.0},
+}
+
 
 def compute_reward(
     obs_prev: dict,
@@ -40,6 +49,7 @@ def compute_reward(
     prev_placement: int | None = None,
     active_skills: set[str] | None = None,
     skill_reward_scale: float = 10.0,
+    reward_phase: int = 3,
 ) -> float:
     """Compute the per-step reward for a single horse.
 
@@ -53,10 +63,17 @@ def compute_reward(
             None if not finished this step.
         archetype: Jockey racing style. One of "front_runner", "stalker",
             "closer", "presser", or None for no archetype shaping.
+        reward_phase: Weighted curriculum phase (1-3). Phase 1 focuses on
+            racing/kicking with faint cornering. Phase 2 adds full cornering.
+            Phase 3 adds archetype/skill shaping.
 
     Returns:
         Scalar reward.
     """
+    weights = PHASE_WEIGHTS.get(reward_phase, PHASE_WEIGHTS[3])
+    w_racing = weights["racing"]
+    w_cornering = weights["cornering"]
+    w_archetype = weights["archetype"]
     reward = 0.0
     progress = obs_curr["track_progress"]
     stamina = obs_curr["stamina_ratio"]
@@ -88,42 +105,35 @@ def compute_reward(
     # Rewards pushing beyond auto-cruise. Same stamina logic.
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
         if progress < 0.75:
-            reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1) * tick_scale
+            reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * max(stamina, 0.1) * tick_scale * w_cornering
         else:
-            reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * tick_scale
+            reward += 0.01 * (vel - cruise_spd) / (max_spd - cruise_spd) * tick_scale * w_cornering
 
     # ── Cornering line bonus ─────────────────────────────────────────
-    # Reward taking the inside line on curves. Negative displacement
-    # means the horse is inside its entry lane = shorter path.
+    # Reward taking the inside line on curves. Weighted by phase.
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
         displacement = obs_curr.get("displacement", 0.0)
-        reward += 3.0 * max(-displacement, 0.0) * curvature * tick_scale
+        reward += 3.0 * max(-displacement, 0.0) * curvature * tick_scale * w_cornering
         # Penalty for being OUTSIDE on curves (positive displacement)
         if displacement > 0:
-            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0 * tick_scale
-        reward += 0.3 * efficiency * tick_scale
+            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0 * tick_scale * w_cornering
+        reward += 0.3 * efficiency * tick_scale * w_cornering
 
         # Reward actively steering inward when not already deep inside
         normal_vel = obs_curr.get("normal_vel", 0.0)
         if displacement > -3.0 and normal_vel < 0:
-            reward += 0.5 * min(abs(normal_vel), 2.0) * tick_scale
+            reward += 0.5 * min(abs(normal_vel), 2.0) * tick_scale * w_cornering
 
     # ── Straight-segment positioning ───────────────────────────────────
-    # Pre-position toward inside before upcoming curves. Signed curvature:
-    # positive = CCW curve (inside = negative displacement),
-    # negative = CW curve (inside = positive displacement).
     if curvature <= 0:
         displacement = obs_curr.get("displacement", 0.0)
         next_curv = obs_curr.get("next_curvature", 0.0)
         if next_curv != 0:
-            # Reward being on the inside of the upcoming curve.
-            # For positive curvature: inside = negative displacement → -disp * curv > 0
-            # For negative curvature: inside = positive displacement → -disp * curv > 0
             inside_score = -displacement * next_curv
-            reward += 0.3 * max(inside_score, 0.0) * tick_scale
+            reward += 0.3 * max(inside_score, 0.0) * tick_scale * w_cornering
         if displacement > 0:
-            reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0) * tick_scale
+            reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0) * tick_scale * w_cornering
 
     # ── Alive penalty ────────────────────────────────────────────────
     # Strong time pressure so finishing faster outweighs accumulating
@@ -131,11 +141,11 @@ def compute_reward(
     reward -= 0.2 * progress * tick_scale
 
     # ── Near-finish bonus ────────────────────────────────────────────
-    # Reward pushing hard in final stretch. Scaled by speed above cruise
-    # so the agent learns to kick, not coast to the finish.
+    # Weighted by cornering phase — redundant with kick pacing at full
+    # weight, but provides gradient refinement once kicking is learned.
     if progress > 0.85 and max_spd > cruise_spd + 1e-6:
         above_cruise = max(vel - cruise_spd, 0.0) / (max_spd - cruise_spd)
-        reward += 1.5 * above_cruise * tick_scale
+        reward += 1.5 * above_cruise * tick_scale * w_cornering
 
     # ── Placement bonus ──────────────────────────────────────────────
     # Per-tick incentive to be ahead of others. Strong enough to make
@@ -200,16 +210,16 @@ def compute_reward(
         reward += 1.5 * positions_gained * max(stamina, 0.3)
 
     # ── Archetype-specific reward shaping ────────────────────────────
-    if archetype:
+    if archetype and w_archetype > 0:
         reward += 5.0 * _archetype_bonus(
             archetype, obs_prev, obs_curr, placement, num_horses, progress,
-        ) * tick_scale
+        ) * tick_scale * w_archetype
 
     # ── Skill-conditioned reward shaping ─────────────────────────────
-    if active_skills:
+    if active_skills and w_archetype > 0:
         reward += skill_reward_scale * compute_skill_bonus(
             active_skills, obs_curr, obs_prev, placement, num_horses,
-        ) * tick_scale
+        ) * tick_scale * w_archetype
 
     return reward
 

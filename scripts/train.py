@@ -77,6 +77,8 @@ def main() -> None:
                         help="Log every N episodes")
     parser.add_argument("--restore", type=str, default=None,
                         help="Path to SB3 checkpoint to resume from")
+    parser.add_argument("--reward-phase", type=int, default=3, choices=[1, 2, 3],
+                        help="Reward phase: 1=race/kick, 2=+cornering, 3=+archetype/skills")
     args = parser.parse_args()
 
     # Resolve tracks
@@ -103,6 +105,7 @@ def main() -> None:
                 track_path=track,
                 config=engine_config,
                 bt_opponents=bt_enabled,
+                reward_phase=args.reward_phase,
             )
         return _init
 
@@ -146,6 +149,7 @@ def main() -> None:
     print(f"Tracks: {len(track_paths)} ({', '.join(Path(t).stem for t in track_paths)})")
     print(f"Horses: {args.horses}")
     print(f"BT opponents: {'on' if bt_enabled else 'off'}")
+    print(f"Reward phase: {args.reward_phase}")
     print(f"Envs: {args.n_envs}")
     print(f"Total timesteps: {args.total_timesteps:,}")
     print(f"Save dir: {save_dir}")
