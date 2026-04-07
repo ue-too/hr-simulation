@@ -151,7 +151,7 @@ def compute_reward(
     # Per-tick incentive to be ahead of others. Strong enough to make
     # overtaking (via steering) worthwhile.
     if num_horses > 1:
-        reward += 0.4 * (num_horses - placement) / (num_horses - 1) * tick_scale
+        reward += 0.1 * (num_horses - placement) / (num_horses - 1) * tick_scale
 
     # ── Collision penalty ────────────────────────────────────────────
     # High enough that bumping doesn't pay off from placement gains.
