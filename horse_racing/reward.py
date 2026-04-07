@@ -171,8 +171,10 @@ def compute_reward(
 
     # Hard exhaustion penalty — fades out in final stretch so agent
     # can deplete stamina for the kick without per-tick punishment.
-    if stamina < 0.30:
-        reward -= 3.0 * tick_scale * late_fade
+    # Threshold at 0.05: only fires when truly empty, not during normal
+    # pacing. The stamina_budget penalty above handles gradual overspend.
+    if stamina < 0.05:
+        reward -= 1.0 * tick_scale * late_fade
 
     # ── Pacing bonus ─────────────────────────────────────────────────
     # Early: reward cruising efficiently. Late: reward kicking hard.
