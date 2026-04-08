@@ -190,9 +190,6 @@ def compute_reward(
             # Late (kick): reward going as fast as possible
             kick_intensity = (progress - 0.75) / 0.25  # 0→1
             reward += 1.5 * speed_ratio * kick_intensity * tick_scale
-            # Penalize coasting during kick
-            if speed_ratio < 0.3:
-                reward -= 1.0 * (0.3 - speed_ratio) * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
