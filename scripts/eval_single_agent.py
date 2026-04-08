@@ -120,11 +120,19 @@ def run_race(
     verbose: bool = False,
     reward_phase: int = 3,
     remap: bool = False,
+    stamina_override: float | None = None,
 ) -> RaceResult:
     """Run one race: ONNX horse 0 vs BT opponents."""
     shared = random_genome()
     genomes = [shared] * horse_count
     engine = HorseRacingEngine(track_path, EngineConfig(horse_count=horse_count), genomes=genomes)
+
+    # Override stamina if requested
+    if stamina_override is not None:
+        for hs in engine.horses:
+            hs.base_attrs.stamina = stamina_override
+            hs.effective_attrs.stamina = stamina_override
+            hs.runtime.current_stamina = stamina_override
 
     # Scale stamina for long tracks (same as training env)
     track_length = engine.horses[0].navigator._total_length
@@ -159,6 +167,7 @@ def run_race(
     finish_order_counter = 0
     actual_finish_order = [0] * horse_count  # 0 = not finished yet
     prev_onnx_placement = horse_count  # assume starting last
+    prev_placements = [horse_count] * horse_count  # track prev placement for all horses
 
     for step in range(max_steps):
         all_obs = engine.get_observations()
@@ -233,14 +242,17 @@ def run_race(
                 hr.collisions += 1
 
             finish_place = actual_finish_order[i] if actual_finish_order[i] > 0 else None
+            current_placement = engine.get_placements()[i]
             r = compute_reward(
                 prev_obs[i], o, o["collision"],
-                placement=engine.get_placements()[i],
+                placement=current_placement,
                 num_horses=horse_count,
                 finish_order=finish_place,
+                prev_placement=prev_placements[i],
                 reward_phase=reward_phase,
             )
             total_rewards[i] += r
+            prev_placements[i] = current_placement
 
             if o["finished"] or any_truncated:
                 hr.progress = o["track_progress"]
@@ -443,6 +455,8 @@ def main():
                         help="Reward phase: 1=race/kick, 2=+cornering, 3=+archetype/skills")
     parser.add_argument("--remap", action="store_true",
                         help="Apply action remapping (for models trained with [-1,1] action space)")
+    parser.add_argument("--stamina", type=float, default=None,
+                        help="Override genome stamina for all horses (default: random 50-150)")
     args = parser.parse_args()
 
     session = ort.InferenceSession(args.model)
@@ -470,6 +484,7 @@ def main():
                 args.horses, args.max_steps, verbose=args.verbose,
                 reward_phase=args.reward_phase,
                 remap=args.remap,
+                stamina_override=args.stamina,
             )
             all_races.append(race)
             rl = race.onnx_horse
