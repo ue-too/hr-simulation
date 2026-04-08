@@ -119,7 +119,6 @@ def run_race(
     max_steps: int,
     verbose: bool = False,
     reward_phase: int = 3,
-    remap: bool = False,
     stamina_override: float | None = None,
 ) -> RaceResult:
     """Run one race: ONNX horse 0 vs BT opponents."""
@@ -173,17 +172,9 @@ def run_race(
         all_obs = engine.get_observations()
 
         # ONNX action for horse 0
+        # Model output is physics-ready (remap baked into ONNX export)
         obs_array = engine.obs_to_array(all_obs[0]).astype(np.float32)
-        raw = session.run(None, {"obs": obs_array.reshape(1, -1)})[0][0]
-        if remap:
-            # Model outputs raw [-1, 1]; clip then remap to physics range
-            clipped = np.clip(raw, -1.0, 1.0)
-            onnx_action = np.array([
-                clipped[0] * 4.5,   # tang: [-1,1] -> [-4.5, 4.5]
-                clipped[1] * 3.0,   # norm: [-1,1] -> [-3, 3]
-            ])
-        else:
-            onnx_action = raw
+        onnx_action = session.run(None, {"obs": obs_array.reshape(1, -1)})[0][0]
         onnx_action = np.clip(onnx_action, [-10.0, -5.0], [10.0, 5.0])
 
         actions = [HorseAction(float(onnx_action[0]), float(onnx_action[1]))]
@@ -453,8 +444,7 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Print per-race details")
     parser.add_argument("--reward-phase", type=int, default=3, choices=[1, 2, 3],
                         help="Reward phase: 1=race/kick, 2=+cornering, 3=+archetype/skills")
-    parser.add_argument("--remap", action="store_true",
-                        help="Apply action remapping (for models trained with [-1,1] action space)")
+    # --remap removed: ONNX export now bakes in action remapping
     parser.add_argument("--stamina", type=float, default=None,
                         help="Override genome stamina for all horses (default: random 50-150)")
     args = parser.parse_args()
@@ -483,7 +473,6 @@ def main():
                 session, track_name, track_path,
                 args.horses, args.max_steps, verbose=args.verbose,
                 reward_phase=args.reward_phase,
-                remap=args.remap,
                 stamina_override=args.stamina,
             )
             all_races.append(race)

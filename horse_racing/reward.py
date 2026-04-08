@@ -98,9 +98,9 @@ def compute_reward(
     # stamina for speed is the correct play during the kick.
     if max_spd > 1e-6:
         if progress < 0.75:
-            reward += 0.03 * (vel / max_spd) * max(stamina, 0.1) * tick_scale
+            reward += 0.10 * (vel / max_spd) * max(stamina, 0.1) * tick_scale
         else:
-            reward += 0.03 * (vel / max_spd) * tick_scale
+            reward += 0.10 * (vel / max_spd) * tick_scale
 
     # Rewards pushing beyond auto-cruise. Same stamina logic.
     if max_spd > cruise_spd + 1e-6 and vel > cruise_spd:
@@ -140,13 +140,6 @@ def compute_reward(
     # per-tick bonuses. Scales with progress: light early, heavy late.
     reward -= 0.2 * progress * tick_scale
 
-    # ── Near-finish bonus ────────────────────────────────────────────
-    # Weighted by cornering phase — redundant with kick pacing at full
-    # weight, but provides gradient refinement once kicking is learned.
-    if progress > 0.85 and max_spd > cruise_spd + 1e-6:
-        above_cruise = max(vel - cruise_spd, 0.0) / (max_spd - cruise_spd)
-        reward += 1.5 * above_cruise * tick_scale * w_cornering
-
     # ── Placement bonus ──────────────────────────────────────────────
     # Per-tick incentive to be ahead of others. Strong enough to make
     # overtaking (via steering) worthwhile.
@@ -176,16 +169,27 @@ def compute_reward(
     if stamina < 0.05:
         reward -= 1.0 * tick_scale * late_fade
 
-    # ── Pacing bonus ─────────────────────────────────────────────────
-    # Early: reward cruising efficiently. Late: reward kicking hard.
-    if progress < 0.7 and abs(vel - cruise_spd) < 1.0:
-        reward += 0.8 * tick_scale
-    elif progress > 0.75 and vel > cruise_spd and max_spd > cruise_spd + 1e-6:
-        # Kick bonus proportional to speed above cruise — going 4 m/s
-        # above cruise pays 4x more than 1 m/s above. Ramps with progress.
-        kick_intensity = (progress - 0.75) / 0.25  # 0 at 75%, 1 at 100%
-        above_cruise_ratio = (vel - cruise_spd) / (max_spd - cruise_spd)
-        reward += 3.0 * kick_intensity * above_cruise_ratio * tick_scale
+    # ── Speed-progress curve ────────────────────────────────────────
+    # Phase-dependent speed target: cruise early, ramp mid, kick late.
+    # Teaches the model WHEN to push — foundation for archetype
+    # conditioning in Phase 3 (closer amplifies late, front_runner early).
+    if max_spd > cruise_spd + 1e-6:
+        speed_ratio = (vel - cruise_spd) / (max_spd - cruise_spd)  # 0=cruise, 1=max
+        speed_ratio = max(0.0, min(1.0, speed_ratio))
+
+        if progress < 0.50:
+            # Early: reward staying near cruise (speed_ratio near 0)
+            reward += 0.5 * (1.0 - speed_ratio) * tick_scale
+        elif progress < 0.75:
+            # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
+            ramp = (progress - 0.50) / 0.25  # 0→1 over mid phase
+            target = 0.5 * ramp
+            deviation = abs(speed_ratio - target)
+            reward += 0.5 * max(0.0, 1.0 - deviation * 2.0) * tick_scale
+        else:
+            # Late (kick): reward going as fast as possible
+            kick_intensity = (progress - 0.75) / 0.25  # 0→1
+            reward += 1.5 * speed_ratio * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
