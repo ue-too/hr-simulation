@@ -144,7 +144,7 @@ def compute_reward(
     # Per-tick incentive to be ahead of others. Strong enough to make
     # overtaking (via steering) worthwhile.
     if num_horses > 1:
-        reward += 0.2 * (num_horses - placement) / (num_horses - 1) * tick_scale
+        reward += 0.5 * (num_horses - placement) / (num_horses - 1) * tick_scale
 
     # ── Collision penalty ────────────────────────────────────────────
     # High enough that bumping doesn't pay off from placement gains.
@@ -179,7 +179,7 @@ def compute_reward(
 
         if progress < 0.50:
             # Early: reward staying near cruise (speed_ratio near 0)
-            reward += 0.5 * (1.0 - speed_ratio) * tick_scale
+            reward += 0.3 * (1.0 - speed_ratio) * tick_scale
         elif progress < 0.75:
             # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
             ramp = (progress - 0.50) / 0.25  # 0→1 over mid phase
