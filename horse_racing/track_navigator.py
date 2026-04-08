@@ -207,7 +207,7 @@ class TrackNavigator:
         if self.entry_radius == float("inf"):
             self.entry_radius = max(dist, seg.radius - TRACK_HALF_WIDTH)
 
-        target_radius = self.entry_radius
+        target_radius = seg.radius
 
         return TrackFrame(
             tangential=tangential,
@@ -308,7 +308,9 @@ class TrackNavigator:
         """Precompute outward normal for each segment.
 
         For curves: None (computed dynamically by _curve_frame).
-        For straights: determined by nearest curve center — outward = away from it.
+        For straights: inherit the outward convention from the nearest curve.
+        CCW curve → outward = rotate tangential by -π/2 (CW rotation).
+        CW curve  → outward = rotate tangential by +π/2 (CCW rotation).
         """
         normals: list[np.ndarray | None] = []
         for i, seg in enumerate(self.segments):
@@ -318,14 +320,14 @@ class TrackNavigator:
             start = _vec2(*seg.start_point)
             end = _vec2(*seg.end_point)
             fwd = _normalize(end - start)
-            normal = _rotate_90_cw(fwd)
 
             curve = self._find_nearest_curve(i)
-            if curve is not None:
-                mid = (start + end) / 2
-                to_center = _vec2(*curve.center) - mid
-                if float(np.dot(to_center, normal)) > 0:
-                    normal = -normal  # flip so it points outward
+            if curve is not None and curve.angle_span < 0:
+                # CW curve: outward = rotate tangential by +π/2 (CCW)
+                normal = _rotate_90_ccw(fwd)
+            else:
+                # CCW curve (or no curve): outward = rotate tangential by -π/2 (CW)
+                normal = _rotate_90_cw(fwd)
             normals.append(normal)
         return normals
 

@@ -36,6 +36,10 @@ def _rotate_90_cw(v: np.ndarray) -> np.ndarray:
     return _vec2(v[1], -v[0])
 
 
+def _rotate_90_ccw(v: np.ndarray) -> np.ndarray:
+    return _vec2(-v[1], v[0])
+
+
 class TrackNavigator:
     """Per-horse navigator that tracks segment index and computes local frame."""
 
@@ -203,7 +207,7 @@ class TrackNavigator:
         if self.entry_radius == float("inf"):
             self.entry_radius = max(dist, seg.radius - TRACK_HALF_WIDTH)
 
-        target_radius = self.entry_radius
+        target_radius = seg.radius
 
         # Turn direction: determine if this is a left or right turn
         # from the horse's perspective (facing tangential direction).
@@ -304,6 +308,13 @@ class TrackNavigator:
     # ------------------------------------------------------------------
 
     def _compute_outward_normals(self) -> list[np.ndarray | None]:
+        """Precompute outward normal for each segment.
+
+        For curves: None (computed dynamically by _curve_frame).
+        For straights: inherit the outward convention from the nearest curve.
+        CCW curve → outward = rotate tangential by -π/2 (CW rotation).
+        CW curve  → outward = rotate tangential by +π/2 (CCW rotation).
+        """
         normals: list[np.ndarray | None] = []
         for i, seg in enumerate(self.segments):
             if isinstance(seg, CurveSegment):
@@ -312,14 +323,12 @@ class TrackNavigator:
             start = _vec2(*seg.start_point)
             end = _vec2(*seg.end_point)
             fwd = _normalize(end - start)
-            normal = _rotate_90_cw(fwd)
 
             curve = self._find_nearest_curve(i)
-            if curve is not None:
-                mid = (start + end) / 2
-                to_center = _vec2(*curve.center) - mid
-                if float(np.dot(to_center, normal)) > 0:
-                    normal = -normal
+            if curve is not None and curve.angle_span < 0:
+                normal = _rotate_90_ccw(fwd)
+            else:
+                normal = _rotate_90_cw(fwd)
             normals.append(normal)
         return normals
 
