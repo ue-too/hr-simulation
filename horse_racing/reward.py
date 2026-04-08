@@ -114,10 +114,11 @@ def compute_reward(
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
         displacement = obs_curr.get("displacement", 0.0)
-        reward += 3.0 * max(-displacement, 0.0) * curvature * tick_scale * w_cornering
+        capped_inside = min(-displacement, TRACK_HALF_WIDTH) if displacement < 0 else 0.0
+        reward += 3.0 * capped_inside * curvature * tick_scale * w_cornering
         # Penalty for being OUTSIDE on curves (positive displacement)
         if displacement > 0:
-            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 60.0 * tick_scale * w_cornering
+            reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 15.0 * tick_scale * w_cornering
         reward += 0.3 * efficiency * tick_scale * w_cornering
 
         # Reward actively steering inward when not already deep inside
@@ -130,8 +131,10 @@ def compute_reward(
         displacement = obs_curr.get("displacement", 0.0)
         next_curv = obs_curr.get("next_curvature", 0.0)
         if next_curv != 0:
-            inside_score = -displacement * next_curv
-            reward += 0.3 * max(inside_score, 0.0) * tick_scale * w_cornering
+            # displacement is consistently negative=inside, positive=outside
+            # after the centerline radius fix, so we just reward being inside
+            inside_score = max(-displacement, 0.0)
+            reward += 0.3 * inside_score * tick_scale * w_cornering
         if displacement > 0:
             reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0) * tick_scale * w_cornering
 
@@ -179,7 +182,9 @@ def compute_reward(
 
         if progress < 0.50:
             # Early: reward staying near cruise (speed_ratio near 0)
-            reward += 0.3 * (1.0 - speed_ratio) * tick_scale
+            # Presser archetype pushes pace early — don't penalize them for it
+            if archetype != "presser":
+                reward += 0.3 * (1.0 - speed_ratio) * tick_scale
         elif progress < 0.75:
             # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
             ramp = (progress - 0.50) / 0.25  # 0→1 over mid phase
@@ -219,12 +224,14 @@ def compute_reward(
     if archetype and w_archetype > 0:
         reward += 5.0 * _archetype_bonus(
             archetype, obs_prev, obs_curr, placement, num_horses, progress,
+            prev_placement=prev_placement,
         ) * tick_scale * w_archetype
 
     # ── Skill-conditioned reward shaping ─────────────────────────────
     if active_skills and w_archetype > 0:
         reward += skill_reward_scale * compute_skill_bonus(
             active_skills, obs_curr, obs_prev, placement, num_horses,
+            prev_placement=prev_placement,
         ) * tick_scale * w_archetype
 
     return reward
@@ -241,6 +248,7 @@ def _archetype_bonus(
     placement: int,
     num_horses: int,
     progress: float,
+    prev_placement: int | None = None,
 ) -> float:
     """Compute archetype-specific reward bonus.
 
@@ -252,7 +260,8 @@ def _archetype_bonus(
     elif archetype == "stalker":
         return _stalker_bonus(obs_curr, placement, num_horses, progress)
     elif archetype == "closer":
-        return _closer_bonus(obs_prev, obs_curr, placement, num_horses, progress)
+        return _closer_bonus(obs_prev, obs_curr, placement, num_horses, progress,
+                             prev_placement=prev_placement)
     elif archetype == "presser":
         return _presser_bonus(obs_curr, placement, num_horses, progress)
     return 0.0
@@ -343,6 +352,7 @@ def _stalker_bonus(
 
 def _closer_bonus(
     obs_prev: dict, obs_curr: dict, placement: int, num_horses: int, progress: float,
+    prev_placement: int | None = None,
 ) -> float:
     """Closer: starts at back, conserves energy, makes big late move.
 
@@ -382,12 +392,16 @@ def _closer_bonus(
             vel = obs_curr["tangential_vel"]
             max_spd = obs_curr["effective_max_speed"]
             if max_spd > 1e-6:
-                bonus += 0.3 * (vel / max_spd)
+                bonus += 0.5 * (vel / max_spd)
 
         if placement <= 2:
             bonus += 0.5
         elif placement <= 3:
             bonus += 0.2
+
+        # Extra reward for gaining positions in the final stretch
+        if prev_placement is not None and placement < prev_placement:
+            bonus += 0.3 * (prev_placement - placement)
 
     return bonus
 

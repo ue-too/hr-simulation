@@ -64,11 +64,12 @@ class TestStaminaManagement:
         bonus = _SKILL_FN["stamina_management"](obs, prev, 2, 4)
         assert bonus > 0, "Should reward being above linear baseline"
 
-    def test_below_baseline_gives_penalty(self):
+    def test_below_baseline_gives_no_bonus(self):
+        # Overspend penalty is handled by base reward, not the skill
         obs = _make_obs(track_progress=0.5, stamina_ratio=0.2)
         prev = _make_obs(track_progress=0.45, stamina_ratio=0.25)
         bonus = _SKILL_FN["stamina_management"](obs, prev, 2, 4)
-        assert bonus < 0, "Should penalize overspending"
+        assert bonus == 0.0, "Should give no bonus when below baseline"
 
     def test_finish_reserves_bonus(self):
         obs = _make_obs(track_progress=0.9, stamina_ratio=0.3)
@@ -93,15 +94,15 @@ class TestSprintTiming:
 
 class TestOvertake:
     def test_gaining_position_gives_bonus(self):
-        obs = _make_obs(_placement=2)
-        prev = _make_obs(_placement=3)
-        bonus = _SKILL_FN["overtake"](obs, prev, 2, 4)
+        obs = _make_obs()
+        prev = _make_obs()
+        bonus = _SKILL_FN["overtake"](obs, prev, 2, 4, prev_placement=3)
         assert bonus > 0, "Should reward gaining positions"
 
     def test_losing_position_gives_penalty(self):
-        obs = _make_obs(_placement=3)
-        prev = _make_obs(_placement=2)
-        bonus = _SKILL_FN["overtake"](obs, prev, 3, 4)
+        obs = _make_obs()
+        prev = _make_obs()
+        bonus = _SKILL_FN["overtake"](obs, prev, 3, 4, prev_placement=2)
         assert bonus < 0, "Should penalize losing positions"
 
 

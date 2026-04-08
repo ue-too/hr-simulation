@@ -121,6 +121,10 @@ def main() -> None:
     # PPO hyperparameters matched to RLlib config
     policy_kwargs = dict(net_arch=[256, 256])
 
+    # Entropy annealing: 0.02 → 0.005 over training
+    def ent_coef_schedule(progress_remaining: float) -> float:
+        return 0.005 + (0.02 - 0.005) * progress_remaining
+
     if args.restore:
         print(f"Restoring from {args.restore}")
         model = PPO.load(
@@ -134,13 +138,13 @@ def main() -> None:
             "MlpPolicy",
             vec_env,
             learning_rate=3e-4,
-            gamma=0.995,
+            gamma=0.998,
             gae_lambda=0.95,
             n_steps=2048,
             batch_size=512,
             n_epochs=10,
             clip_range=0.2,
-            ent_coef=0.02,
+            ent_coef=ent_coef_schedule,
             policy_kwargs=policy_kwargs,
             verbose=0,
             device="auto",

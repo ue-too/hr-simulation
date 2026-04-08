@@ -50,11 +50,8 @@ def _stamina_management_bonus(
     if margin > 0.0:
         bonus += 0.15 * min(margin, 0.3)
 
-    # Penalize overspending (more than 15% below baseline)
-    if margin < -0.15:
-        bonus -= 0.2 * min(abs(margin + 0.15), 0.3)
-
-    # Bonus for having reserves near the finish
+    # Overspend penalty is handled by the base reward (reward.py:162-163).
+    # Only add the skill-unique signal: bonus for having reserves near finish.
     if progress > 0.85 and stamina > 0.2:
         bonus += 0.1 * min(stamina, 0.4)
 
@@ -107,6 +104,7 @@ def _overtake_bonus(
     obs_prev: dict,
     placement: int,
     num_horses: int,
+    prev_placement: int | None = None,
 ) -> float:
     """Close on and pass opponents.
 
@@ -116,7 +114,8 @@ def _overtake_bonus(
     bonus = 0.0
 
     # Position change reward/penalty
-    prev_placement = obs_prev.get("_placement", placement)
+    if prev_placement is None:
+        prev_placement = placement
     if placement < prev_placement:
         positions_gained = prev_placement - placement
         bonus += 0.2 * positions_gained
@@ -268,6 +267,7 @@ def compute_skill_bonus(
     obs_prev: dict,
     placement: int,
     num_horses: int,
+    prev_placement: int | None = None,
 ) -> float:
     """Sum bonuses for all active skills.
 
@@ -277,6 +277,8 @@ def compute_skill_bonus(
         obs_prev: Previous observation dict.
         placement: Current 1-indexed placement.
         num_horses: Total horses in the race.
+        prev_placement: Previous tick's placement (1-indexed). If None,
+            defaults to current placement (no position change detected).
 
     Returns:
         Combined skill bonus (unclamped — individual skills self-limit).
@@ -285,5 +287,8 @@ def compute_skill_bonus(
     for sid in active_skills:
         fn = _SKILL_FN.get(sid)
         if fn is not None:
-            total += fn(obs_curr, obs_prev, placement, num_horses)
+            if fn is _overtake_bonus:
+                total += fn(obs_curr, obs_prev, placement, num_horses, prev_placement)
+            else:
+                total += fn(obs_curr, obs_prev, placement, num_horses)
     return total

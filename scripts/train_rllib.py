@@ -85,7 +85,7 @@ def main() -> None:
             minibatch_size=512,
             num_epochs=10,
             lr=3e-4,
-            gamma=0.995,
+            gamma=0.998,
             lambda_=0.95,
             clip_param=0.2,
             vf_clip_param=50.0,
