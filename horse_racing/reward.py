@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v4.1 — stronger kick reward, faster ramp, stamina-floored"
+REWARD_VERSION = "v4.2 — kick acceleration bonus for faster top-speed reach"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -232,6 +232,13 @@ def compute_reward(
             # meaningful — no chicken-and-egg with stamina conservation.
             kick_intensity = min(1.0, (progress - 0.75) / 0.15)  # 0→1 over 75-90%, then 1.0
             reward += 5.0 * speed_ratio * kick_intensity * max(stamina, 0.3) * tick_scale
+
+            # Acceleration bonus: reward speed GAINS during kick.
+            # Incentivizes slamming the throttle (high action) to reach
+            # top speed quickly rather than gradually ramping up.
+            prev_vel = obs_prev["tangential_vel"]
+            speed_gain = max(0.0, vel - prev_vel)
+            reward += 3.0 * speed_gain * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
