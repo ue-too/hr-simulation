@@ -155,10 +155,11 @@ def compute_reward(
     reward -= 0.2 * progress * tick_scale
 
     # ── Placement bonus ──────────────────────────────────────────────
-    # Per-tick incentive to be ahead of others. Strong enough to make
-    # overtaking (via steering) worthwhile.
+    # Scaled by progress: weak early, strong late. Early positions don't
+    # matter much — the model can cruise without hemorrhaging reward.
+    # Late positions matter a lot — fight for position in the kick phase.
     if num_horses > 1:
-        reward += 0.5 * (num_horses - placement) / (num_horses - 1) * tick_scale
+        reward += 0.5 * (num_horses - placement) / (num_horses - 1) * progress * tick_scale
 
     # ── Collision penalty ────────────────────────────────────────────
     # High enough that bumping doesn't pay off from placement gains.
@@ -183,6 +184,15 @@ def compute_reward(
     if stamina < 0.05:
         reward -= 1.0 * tick_scale * late_fade
 
+    # ── Stamina checkpoint bonuses ─────────────────────────────────
+    # One-shot rewards for having healthy reserves at key race stages.
+    # Easy to credit-assign — model learns that conserving pays off.
+    prev_progress = obs_prev["track_progress"]
+    if prev_progress < 0.50 <= progress and stamina > 0.55:
+        reward += 50.0
+    if prev_progress < 0.75 <= progress and stamina > 0.20:
+        reward += 100.0
+
     # ── Speed-progress curve ────────────────────────────────────────
     # Phase-dependent speed target: cruise early, ramp mid, kick late.
     # Teaches the model WHEN to push — foundation for archetype
@@ -192,14 +202,10 @@ def compute_reward(
         speed_ratio = max(0.0, min(1.0, speed_ratio))
 
         if progress < 0.50:
-            # Early: reward cruising, penalize sprinting.
-            # Threshold at 0.5: allow moderate push above cruise.
-            # Presser archetype pushes pace early — exempt from penalty.
+            # Early: reward staying near cruise (no penalty for pushing)
+            # Presser archetype pushes pace early — exempt
             if archetype != "presser":
-                if speed_ratio > 0.5:
-                    reward -= 0.5 * (speed_ratio - 0.5) * tick_scale
-                else:
-                    reward += 0.3 * (1.0 - speed_ratio) * tick_scale
+                reward += 0.3 * (1.0 - speed_ratio) * tick_scale
         elif progress < 0.75:
             # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
             ramp = (progress - 0.50) / 0.25  # 0→1 over mid phase
@@ -207,14 +213,11 @@ def compute_reward(
             deviation = abs(speed_ratio - target)
             reward += 0.5 * max(0.0, 1.0 - deviation * 2.0) * tick_scale
         else:
-            # Late (kick): reward sprinting — but only if stamina remains.
-            # Forces the model to conserve early so it has gas for the kick.
+            # Late (kick): reward sprinting, scaled continuously by stamina.
+            # More stamina = more kick reward — smooth gradient that makes
+            # every bit of conserved stamina pay off proportionally.
             kick_intensity = (progress - 0.75) / 0.25  # 0→1
-            if stamina > 0.10:
-                reward += 2.0 * speed_ratio * kick_intensity * tick_scale
-            else:
-                # Depleted: no kick reward, mild penalty for arriving empty
-                reward -= 0.5 * kick_intensity * tick_scale
+            reward += 2.0 * speed_ratio * kick_intensity * stamina * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.

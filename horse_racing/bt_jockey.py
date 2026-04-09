@@ -297,29 +297,52 @@ def _kick(obs: dict, p: JockeyPersonality) -> ActionOutput | None:
     return ActionOutput(tangential=effort, normal=0.0, weight=0.6)
 
 
-def _overtake_line(obs: dict, p: JockeyPersonality) -> ActionOutput | None:
-    """Steer to overtake horses that are nearby and alongside."""
+def _overtake(obs: dict, p: JockeyPersonality) -> ActionOutput | None:
+    """Full overtake: detect blockage, pull out, pass, cut back.
+
+    Phases:
+    1. Blocked: slower horse ahead in same lane → steer to side with more room
+    2. Alongside: side-by-side → accelerate past while holding lane offset
+    3. Clear: no blockage → return None (let other behaviors take over)
+    """
+    if p.overtake_aggression < 0.05:
+        return None
+
     relatives = obs["relatives"]
     displacement = obs["displacement"]
+    track_half_w = 10.0  # approximate TRACK_HALF_WIDTH
 
+    # Phase 1: detect horse blocking ahead (in front, same lane, slower)
     for tang_off, norm_off, rel_tv, rel_nv in relatives:
-        # Horse is alongside (small tangential gap) and close laterally
-        if abs(tang_off) < 5.0 and abs(norm_off) < 8.0:
-            # Go to whichever side has more room
-            # Positive displacement = outside, negative = inside
-            if displacement > 0:
-                # We're on the outside — try to go further outside or cut inside
-                steer = -3.0 * p.overtake_aggression if norm_off > 0 else 2.0 * p.overtake_aggression
+        if tang_off > 2.0 and tang_off < 15.0 and abs(norm_off) < 3.0 and rel_tv < -0.5:
+            # Blocked — pull out to side with more room
+            room_inside = displacement + track_half_w   # how far to inner rail
+            room_outside = track_half_w - displacement   # how far to outer rail
+            if room_outside > room_inside:
+                steer = 2.0 * p.overtake_aggression  # go outside (positive normal)
             else:
-                # We're on the inside — hold line or go wider
-                steer = 2.0 * p.overtake_aggression if norm_off < 0 else -2.0 * p.overtake_aggression
+                steer = -2.0 * p.overtake_aggression  # go inside (negative normal)
             return ActionOutput(
-                tangential=2.0 * p.overtake_aggression,  # push a bit harder
+                tangential=2.5 * p.overtake_aggression,
                 normal=_clamp(steer, -4.0, 4.0),
+                weight=0.5 * p.overtake_aggression,
+            )
+
+    # Phase 2: alongside — accelerate past while holding offset
+    for tang_off, norm_off, rel_tv, rel_nv in relatives:
+        if abs(tang_off) < 5.0 and abs(norm_off) < 6.0:
+            # Hold current lateral offset (don't steer into them)
+            hold_steer = 0.0
+            if abs(norm_off) < 2.5:
+                # Too close laterally — nudge away
+                hold_steer = 1.5 * p.overtake_aggression * (1.0 if norm_off < 0 else -1.0)
+            return ActionOutput(
+                tangential=3.0 * p.overtake_aggression,
+                normal=_clamp(hold_steer, -3.0, 3.0),
                 weight=0.4 * p.overtake_aggression,
             )
 
-    return None  # no horse to overtake
+    return None  # clear — no overtake needed
 
 
 # ---------------------------------------------------------------------------
@@ -342,20 +365,22 @@ def build_default_tree() -> BTNode:
             Leaf(_gate_break),
         ),
 
-        # Early race: pace + cornering
+        # Early race: pace + overtake + cornering
         Condition(
             lambda obs, p: obs["track_progress"] < 0.40,
             Blend([
                 Leaf(_pace_control),
+                Leaf(_overtake),
                 Leaf(_cornering_line),
             ]),
         ),
 
-        # Mid race: pace + drafting + cornering
+        # Mid race: pace + overtake + drafting + cornering
         Condition(
             lambda obs, p: obs["track_progress"] < p.kick_progress,
             Blend([
                 Leaf(_pace_control),
+                Leaf(_overtake),
                 Leaf(_drafting),
                 Leaf(_cornering_line),
             ]),
@@ -366,7 +391,7 @@ def build_default_tree() -> BTNode:
             lambda obs, p: obs["track_progress"] >= p.kick_progress,
             Blend([
                 Leaf(_kick),
-                Leaf(_overtake_line),
+                Leaf(_overtake),
                 Leaf(_cornering_line),
             ]),
         ),
