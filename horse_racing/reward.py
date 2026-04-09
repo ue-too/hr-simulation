@@ -9,6 +9,8 @@ no single signal dominates. Placement, progress, stamina, and cornering are
 all audible to the agent.
 """
 
+REWARD_VERSION = "v3 — continuous kick scaling, checkpoint bonuses, progress-scaled placement"
+
 from __future__ import annotations
 
 from horse_racing.skills import compute_skill_bonus
