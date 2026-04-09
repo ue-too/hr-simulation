@@ -8,10 +8,9 @@ All per-tick reward components are normalized to roughly 0.1–0.2 range so that
 no single signal dominates. Placement, progress, stamina, and cornering are
 all audible to the agent.
 """
+from __future__ import annotations
 
 REWARD_VERSION = "v3 — continuous kick scaling, checkpoint bonuses, progress-scaled placement"
-
-from __future__ import annotations
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
