@@ -44,9 +44,8 @@ class HorseRacingSingleEnv(gym.Env):
         self.engine = HorseRacingEngine(track_path, self.config)
 
         # Action space: network outputs in [-1, 1], remapped in step() to
-        # useful physics range. Tangential [-2, 7] covers deceleration through
-        # hard kick. Normal [-3, 3] covers steering. This ensures SB3's
-        # initial Gaussian (mean ~0, std ~1) explores the useful range.
+        # full physics range. Tangential [-10, 10] and normal [-5, 5] match
+        # the BT jockey / engine action range.
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0], dtype=np.float32),
             high=np.array([1.0, 1.0], dtype=np.float32),
@@ -137,11 +136,11 @@ class HorseRacingSingleEnv(gym.Env):
     def remap_action(action: np.ndarray) -> tuple[float, float]:
         """Map network output [-1, 1] to physics action range.
 
-        Tangential: [-1, 1] → [-4.5, 4.5]  (center 0 = cruise, +4.5 = kick)
-        Normal:     [-1, 1] → [-3, 3]       (center 0, half-range 3)
+        Tangential: [-1, 1] → [-10, 10]  (matches BT jockey / engine range)
+        Normal:     [-1, 1] → [-5, 5]    (matches BT jockey / engine range)
         """
-        tang = float(action[0]) * 4.5
-        norm = float(action[1]) * 3.0
+        tang = float(action[0]) * 10.0
+        norm = float(action[1]) * 5.0
         return tang, norm
 
     def step(self, action: np.ndarray):

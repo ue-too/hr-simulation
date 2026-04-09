@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v3 — continuous kick scaling, checkpoint bonuses, progress-scaled placement"
+REWARD_VERSION = "v4 — per-step alive penalty, below-cruise penalty, softened stamina budget"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -150,10 +150,18 @@ def compute_reward(
         if displacement > 0:
             reward -= 0.15 * min(displacement / TRACK_HALF_WIDTH, 1.0) * tick_scale * w_cornering
 
+    # ── Below-cruise penalty ────────────────────────────────────────
+    # Auto-cruise drives toward cruise_speed with action=0. Going below
+    # cruise means the agent is actively braking — never a correct play.
+    if cruise_spd > 1e-6 and vel < cruise_spd * 0.95:
+        shortfall = (cruise_spd - vel) / cruise_spd  # 0..1
+        reward -= 0.3 * shortfall
+
     # ── Alive penalty ────────────────────────────────────────────────
-    # Strong time pressure so finishing faster outweighs accumulating
-    # per-tick bonuses. Scales with progress: light early, heavy late.
-    reward -= 0.2 * progress * tick_scale
+    # Per-step (NOT per-progress) time pressure. A slow horse takes more
+    # steps to finish and pays more total penalty — directly incentivizes
+    # speed. Ramps with progress: light early, heavy late.
+    reward -= 0.15 * (0.3 + progress)
 
     # ── Placement bonus ──────────────────────────────────────────────
     # Scaled by progress: weak early, strong late. Early positions don't
@@ -172,18 +180,21 @@ def compute_reward(
     # conservation — the agent should use its stamina, not hoard it.
     # Fade out penalties after 75% progress — burning stamina in the
     # final stretch is correct racing strategy, not a mistake.
+    # Softened: only fires when stamina is 25% below baseline (was 15%),
+    # and at lower magnitude, so the model can learn to race before
+    # learning to budget.
     late_fade = max(0.0, 1.0 - max(0.0, progress - 0.75) / 0.25)  # 1.0 until 75%, 0.0 at 100%
     expected_stamina = 1.0 - progress
     stamina_margin = stamina - expected_stamina
-    if stamina_margin < -0.15:
-        reward -= 2.0 * abs(stamina_margin + 0.15) * tick_scale * late_fade
+    if stamina_margin < -0.25:
+        reward -= 1.0 * abs(stamina_margin + 0.25) * tick_scale * late_fade
 
     # Hard exhaustion penalty — fades out in final stretch so agent
     # can deplete stamina for the kick without per-tick punishment.
     # Threshold at 0.05: only fires when truly empty, not during normal
     # pacing. The stamina_budget penalty above handles gradual overspend.
     if stamina < 0.05:
-        reward -= 1.0 * tick_scale * late_fade
+        reward -= 0.5 * tick_scale * late_fade
 
     # ── Stamina checkpoint bonuses ─────────────────────────────────
     # One-shot rewards for having healthy reserves at key race stages.
@@ -203,9 +214,10 @@ def compute_reward(
         speed_ratio = max(0.0, min(1.0, speed_ratio))
 
         if progress < 0.50:
-            # Early: reward staying near cruise (no penalty for pushing)
-            # Presser archetype pushes pace early — exempt
-            if archetype != "presser":
+            # Early: reward staying near cruise, but ONLY if at or above cruise.
+            # Below cruise gets nothing — the below-cruise penalty handles that.
+            # Presser archetype pushes pace early — exempt.
+            if archetype != "presser" and vel >= cruise_spd:
                 reward += 0.3 * (1.0 - speed_ratio) * tick_scale
         elif progress < 0.75:
             # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
