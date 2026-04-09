@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v4 — per-step alive penalty, below-cruise penalty, softened stamina budget"
+REWARD_VERSION = "v4.1 — stronger kick reward, faster ramp, stamina-floored"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -226,11 +226,12 @@ def compute_reward(
             deviation = abs(speed_ratio - target)
             reward += 0.5 * max(0.0, 1.0 - deviation * 2.0) * tick_scale
         else:
-            # Late (kick): reward sprinting, scaled continuously by stamina.
-            # More stamina = more kick reward — smooth gradient that makes
-            # every bit of conserved stamina pay off proportionally.
-            kick_intensity = (progress - 0.75) / 0.25  # 0→1
-            reward += 2.0 * speed_ratio * kick_intensity * stamina * tick_scale
+            # Late (kick): strong reward for sprinting. Ramps quickly so
+            # the model feels the signal early in the kick phase.
+            # Stamina floor of 0.3 ensures the kick reward is always
+            # meaningful — no chicken-and-egg with stamina conservation.
+            kick_intensity = min(1.0, (progress - 0.75) / 0.15)  # 0→1 over 75-90%, then 1.0
+            reward += 5.0 * speed_ratio * kick_intensity * max(stamina, 0.3) * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
