@@ -26,6 +26,20 @@ from horse_racing.engine import EngineConfig
 from horse_racing.env import HorseRacingSingleEnv
 
 
+class EntropyAnnealCallback(BaseCallback):
+    """Linearly anneal ent_coef from start to end over training."""
+
+    def __init__(self, start: float = 0.02, end: float = 0.005, verbose: int = 0):
+        super().__init__(verbose)
+        self._start = start
+        self._end = end
+
+    def _on_step(self) -> bool:
+        progress = 1.0 - (self.num_timesteps / self.model._total_timesteps)
+        self.model.ent_coef = self._end + (self._start - self._end) * progress
+        return True
+
+
 class LoggingCallback(BaseCallback):
     """Logs episode stats every log_every episodes."""
 
@@ -121,10 +135,6 @@ def main() -> None:
     # PPO hyperparameters matched to RLlib config
     policy_kwargs = dict(net_arch=[256, 256])
 
-    # Entropy annealing: 0.02 → 0.005 over training
-    def ent_coef_schedule(progress_remaining: float) -> float:
-        return 0.005 + (0.02 - 0.005) * progress_remaining
-
     if args.restore:
         print(f"Restoring from {args.restore}")
         model = PPO.load(
@@ -144,7 +154,7 @@ def main() -> None:
             batch_size=512,
             n_epochs=10,
             clip_range=0.2,
-            ent_coef=ent_coef_schedule,
+            ent_coef=0.02,
             policy_kwargs=policy_kwargs,
             verbose=0,
             device="auto",
@@ -166,11 +176,12 @@ def main() -> None:
         name_prefix="checkpoint",
     )
     logging_cb = LoggingCallback(log_every=args.log_every)
+    entropy_cb = EntropyAnnealCallback(start=0.02, end=0.005)
 
     start_time = time.time()
     model.learn(
         total_timesteps=args.total_timesteps,
-        callback=[checkpoint_cb, logging_cb],
+        callback=[checkpoint_cb, logging_cb, entropy_cb],
     )
     elapsed = time.time() - start_time
 
