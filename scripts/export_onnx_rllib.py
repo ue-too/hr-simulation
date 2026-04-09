@@ -14,17 +14,15 @@ from ray.rllib.policy.policy import PolicySpec
 
 
 class RLlibPolicyWrapper(nn.Module):
-    """Wraps the RLlib RLModule's forward_inference into a simple obs→action network."""
+    """Wraps the RLlib model into a simple obs→action network."""
 
-    def __init__(self, rl_module):
+    def __init__(self, model):
         super().__init__()
-        self.rl_module = rl_module
+        self.model = model
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
-        result = self.rl_module.forward_inference({"obs": obs})
-        # PPO outputs action_dist_inputs (mean + log_std for Gaussian)
-        # Take only the first 2 values (action means)
-        return result["action_dist_inputs"][:, :2]
+        model_out, _ = self.model({"obs": obs})
+        return model_out[:, :2]  # action means only
 
 
 def main():
@@ -42,9 +40,13 @@ def main():
 
     from horse_racing.rllib_env import HorseRacingRLlibEnv
 
-    # Recreate the config that was used for training
+    # Recreate the config that was used for training (old API stack)
     config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment(
             env=HorseRacingRLlibEnv,
             env_config={
@@ -55,10 +57,10 @@ def main():
         )
         .env_runners(num_env_runners=0)
         .framework("torch")
-        .rl_module(
-            model_config={
+        .training(
+            model={
                 "fcnet_hiddens": [256, 256],
-                "fcnet_activation": "relu",
+                "fcnet_activation": "tanh",
             },
         )
         .multi_agent(
@@ -67,27 +69,27 @@ def main():
         )
     )
 
-    algo = config.build_algo()
+    algo = config.build()
     checkpoint_path = str(Path(args.checkpoint).resolve())
     algo.restore(checkpoint_path)
     print(f"Restored from {checkpoint_path}")
 
-    # Get the RL module
-    module = algo.get_module(args.policy)
-    module.eval()
+    # Get the model
+    policy = algo.get_policy(args.policy)
+    model = policy.model
+    model.eval()
 
     # Test forward pass
     from horse_racing.types import OBS_SIZE
-    obs_dim = OBS_SIZE  # 108
+    obs_dim = OBS_SIZE
     dummy = torch.zeros(1, obs_dim, dtype=torch.float32)
     with torch.no_grad():
-        result = module.forward_inference({"obs": dummy})
-        action_dist = result["action_dist_inputs"]
-        print(f"Module output shape: {action_dist.shape}")
-        print(f"Action means: {action_dist[0, :2].numpy()}")
+        model_out, _ = model({"obs": dummy})
+        print(f"Model output shape: {model_out.shape}")
+        print(f"Action means: {model_out[0, :2].numpy()}")
 
     # Wrap for ONNX export
-    wrapper = RLlibPolicyWrapper(module)
+    wrapper = RLlibPolicyWrapper(model)
     wrapper.eval()
 
     with torch.no_grad():

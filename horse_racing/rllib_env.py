@@ -57,6 +57,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
         self.archetypes: dict[str, str | None] = config.get("archetypes", {})
 
         self.track_surface = config.get("track_surface", "dry")
+        self.reward_phase = config.get("reward_phase", 3)
 
         # BT opponent ratio: fraction of horses controlled by behavior tree
         self.bt_opponent_ratio = config.get("bt_opponent_ratio", 0.0)
@@ -205,6 +206,7 @@ class HorseRacingRLlibEnv(MultiAgentEnv):
                 finish_order=finish_order,
                 archetype=archetype,
                 prev_placement=prev_place,
+                reward_phase=self.reward_phase,
             )
             self._prev_placements[agent_id] = placements[i]
             terminateds[agent_id] = obs_curr["finished"]

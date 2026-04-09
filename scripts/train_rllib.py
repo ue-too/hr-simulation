@@ -72,6 +72,10 @@ def main() -> None:
 
     config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment(
             env=HorseRacingRLlibEnv,
             env_config=env_config,
@@ -82,19 +86,17 @@ def main() -> None:
         )
         .training(
             train_batch_size=16000,
-            minibatch_size=512,
-            num_epochs=10,
+            sgd_minibatch_size=512,
+            num_sgd_iter=10,
             lr=3e-4,
             gamma=0.998,
             lambda_=0.95,
             clip_param=0.2,
             vf_clip_param=50.0,
             entropy_coeff=0.005,
-        )
-        .rl_module(
-            model_config={
+            model={
                 "fcnet_hiddens": [256, 256],
-                "fcnet_activation": "relu",
+                "fcnet_activation": "tanh",
             },
         )
         .framework("torch")
@@ -104,7 +106,7 @@ def main() -> None:
         )
     )
 
-    algo = config.build_algo()
+    algo = config.build()
 
     if args.restore:
         restore_path = str(Path(args.restore).resolve())
