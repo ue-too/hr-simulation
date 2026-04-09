@@ -114,17 +114,28 @@ def compute_reward(
     curvature = obs_curr.get("curvature", 0.0)
     if curvature > 0:
         displacement = obs_curr.get("displacement", 0.0)
-        capped_inside = min(-displacement, TRACK_HALF_WIDTH) if displacement < 0 else 0.0
+        # Reward being inside, but cap the benefit at ~5m inside (no extra
+        # reward for hugging the rail harder). This encourages a smooth
+        # inside line without slamming into the rail.
+        capped_inside = min(-displacement, 5.0) if displacement < 0 else 0.0
         reward += 3.0 * capped_inside * curvature * tick_scale * w_cornering
         # Penalty for being OUTSIDE on curves (positive displacement)
         if displacement > 0:
             reward -= 1.5 * min(displacement / TRACK_HALF_WIDTH, 1.0) * curvature * 15.0 * tick_scale * w_cornering
+        # Penalty for being too close to inner rail — discourages slamming
+        if displacement < -(TRACK_HALF_WIDTH - 1.5):
+            rail_proximity = -(displacement + TRACK_HALF_WIDTH - 1.5)  # how deep past threshold
+            reward -= 2.0 * rail_proximity * curvature * tick_scale * w_cornering
         reward += 0.3 * efficiency * tick_scale * w_cornering
 
-        # Reward actively steering inward when not already deep inside
+        # Reward gentle inward steering when not already inside.
+        # Cap velocity reward to discourage aggressive lunges.
         normal_vel = obs_curr.get("normal_vel", 0.0)
         if displacement > -3.0 and normal_vel < 0:
-            reward += 0.5 * min(abs(normal_vel), 2.0) * tick_scale * w_cornering
+            reward += 0.5 * min(abs(normal_vel), 1.0) * tick_scale * w_cornering
+        # Penalize high inward velocity near the rail (slamming)
+        if displacement < -5.0 and normal_vel < -0.5:
+            reward -= 1.0 * min(abs(normal_vel), 3.0) * tick_scale * w_cornering
 
     # ── Straight-segment positioning ───────────────────────────────────
     if curvature <= 0:
@@ -181,10 +192,14 @@ def compute_reward(
         speed_ratio = max(0.0, min(1.0, speed_ratio))
 
         if progress < 0.50:
-            # Early: reward staying near cruise (speed_ratio near 0)
-            # Presser archetype pushes pace early — don't penalize them for it
+            # Early: reward cruising, penalize sprinting.
+            # Threshold at 0.5: allow moderate push above cruise.
+            # Presser archetype pushes pace early — exempt from penalty.
             if archetype != "presser":
-                reward += 0.3 * (1.0 - speed_ratio) * tick_scale
+                if speed_ratio > 0.5:
+                    reward -= 0.5 * (speed_ratio - 0.5) * tick_scale
+                else:
+                    reward += 0.3 * (1.0 - speed_ratio) * tick_scale
         elif progress < 0.75:
             # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
             ramp = (progress - 0.50) / 0.25  # 0→1 over mid phase
@@ -192,9 +207,14 @@ def compute_reward(
             deviation = abs(speed_ratio - target)
             reward += 0.5 * max(0.0, 1.0 - deviation * 2.0) * tick_scale
         else:
-            # Late (kick): reward going as fast as possible
+            # Late (kick): reward sprinting — but only if stamina remains.
+            # Forces the model to conserve early so it has gas for the kick.
             kick_intensity = (progress - 0.75) / 0.25  # 0→1
-            reward += 1.5 * speed_ratio * kick_intensity * tick_scale
+            if stamina > 0.10:
+                reward += 2.0 * speed_ratio * kick_intensity * tick_scale
+            else:
+                # Depleted: no kick reward, mild penalty for arriving empty
+                reward -= 0.5 * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
@@ -208,6 +228,10 @@ def compute_reward(
         # costs 400 points, enough to drop from 1st to 2nd place value.
         if stamina > 0.40:
             reward -= 200.0 * (stamina - 0.40)
+        # Reward finishing with some stamina left (good pacing).
+        # Sweet spot: 10-30% = paced well and kicked hard.
+        if 0.10 <= stamina <= 0.30:
+            reward += 100.0
         # Reward crossing the line at high speed — reinforces sprinting
         # through the finish rather than coasting. ~150 points at max speed.
         if max_spd > 1e-6:

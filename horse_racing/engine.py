@@ -351,7 +351,10 @@ class HorseRacingEngine:
         extra_normal = action.extra_normal * eff.turn_accel
 
         tangential_accel = speed_change + extra_tangential
-        if tangential_vel >= eff.max_speed and tangential_accel > 0:
+        if tangential_vel > eff.max_speed:
+            # Active brake: clamp accel so speed converges to max_speed
+            tangential_accel = min(tangential_accel, eff.max_speed - tangential_vel)
+        elif tangential_vel >= eff.max_speed and tangential_accel > 0:
             tangential_accel = 0.0
         if tangential_vel <= 0.0 and tangential_accel < 0:
             tangential_accel = 0.0
