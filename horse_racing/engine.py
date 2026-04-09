@@ -28,7 +28,7 @@ from horse_racing.types import (
     HORSE_COUNT,
     HORSE_SPACING,
     MAX_REL_HORSES,
-    CRUISE_BLEND_THRESHOLD,
+
     NORMAL_DAMP,
     PHYS_HZ,
     PHYS_SUBSTEPS,
@@ -342,20 +342,15 @@ class HorseRacingEngine:
         else:
             centripetal = 0.0
 
-        # Auto-cruise toward cruise speed, fading out as jockey input increases
+        # Auto-cruise spring: always active, pulls toward cruise speed.
+        # Jockey input stacks on top — at steady state the spring balances
+        # the push, giving vel = cruise + action * fwd_accel.
         speed_change = eff.cruise_speed - tangential_vel
 
         extra_tangential = action.extra_tangential * eff.forward_accel
         extra_normal = action.extra_normal * eff.turn_accel
 
-        # Fade auto-cruise only when jockey opposes it (e.g. pushing faster
-        # while auto-cruise pulls back toward cruise). When they agree in
-        # direction, stack at full strength so a stopped horse always recovers.
-        if speed_change * extra_tangential < 0:
-            cruise_weight = max(0.0, 1.0 - abs(extra_tangential) / CRUISE_BLEND_THRESHOLD)
-        else:
-            cruise_weight = 1.0
-        tangential_accel = cruise_weight * speed_change + extra_tangential
+        tangential_accel = speed_change + extra_tangential
         if tangential_vel >= eff.max_speed and tangential_accel > 0:
             tangential_accel = 0.0
         if tangential_vel <= 0.0 and tangential_accel < 0:

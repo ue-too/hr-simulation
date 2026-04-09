@@ -47,7 +47,7 @@ RAIL_THICKNESS: float = 0.5  # 0.5 m rail (scaled down from 3.0 to match)
 
 # Stamina constants (no recovery — fixed pool, drain only)
 STAMINA_DRAIN_RATE: float = 0.01         # tangential push drain (reverted from 0.03)
-OVERDRIVE_DRAIN_RATE: float = 0.005      # exceeding cruise speed (reverted from 0.015)
+OVERDRIVE_DRAIN_RATE: float = 0.002      # quadratic: (speed - cruise)² × rate
 CORNERING_DRAIN_RATE: float = 0.002      # cornering beyond grip (was 0.02)
 SPEED_DRAIN_RATE: float = 0.0014         # distance tax (was 0.014)
 GRIP_FORCE_BASELINE: float = 150.0       # unchanged

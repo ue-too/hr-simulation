@@ -69,6 +69,20 @@ class TestForwardDrains:
         update_stamina(over, eff, 0.0, 0.0, 18.0, 18.0, 0.0, float("inf"))
         assert over.current_stamina < cruise.current_stamina
 
+    def test_overdrive_quadratic_scaling(self):
+        """Overdrive drain scales quadratically: 2x speed above cruise = 4x drain."""
+        s1 = _make_state(100.0)
+        s2 = _make_state(100.0)
+        eff = _default_eff()  # cruise_speed=14.25
+        # cruise+1 vs cruise+2, no push/steering so only overdrive + speed drain
+        update_stamina(s1, eff, 0.0, 0.0, eff.cruise_speed + 1.0, eff.cruise_speed + 1.0, 0.0, float("inf"))
+        update_stamina(s2, eff, 0.0, 0.0, eff.cruise_speed + 2.0, eff.cruise_speed + 2.0, 0.0, float("inf"))
+        # Isolate overdrive component by subtracting speed drain
+        from horse_racing.types import SPEED_DRAIN_RATE
+        od1 = (100.0 - s1.current_stamina) - (eff.cruise_speed + 1.0) * SPEED_DRAIN_RATE
+        od2 = (100.0 - s2.current_stamina) - (eff.cruise_speed + 2.0) * SPEED_DRAIN_RATE
+        assert od2 / od1 == pytest.approx(4.0, rel=0.01)
+
     def test_speed_drain_proportional(self):
         """Faster speed = more drain (distance tax)."""
         slow = _make_state(100.0)

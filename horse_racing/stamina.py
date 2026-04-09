@@ -53,9 +53,10 @@ def update_stamina(
     if abs(extra_normal) > 0:
         drain += abs(extra_normal) * LATERAL_STEERING_DRAIN_RATE
 
-    # Drain from exceeding cruise speed
+    # Drain from exceeding cruise speed (quadratic — small pushes cheap, big pushes expensive)
     if current_speed > eff.cruise_speed:
-        drain += (current_speed - eff.cruise_speed) * OVERDRIVE_DRAIN_RATE
+        overdrive = current_speed - eff.cruise_speed
+        drain += overdrive * overdrive * OVERDRIVE_DRAIN_RATE
 
     # Drain from cornering beyond grip threshold
     if turn_radius < 1e6:
