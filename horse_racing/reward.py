@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v4.3 — kick action magnitude bonus + asymmetric action space [-3, +10]"
+REWARD_VERSION = "v4.4 — remove headroom gating from kick magnitude bonus (was flat past +3.75)"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -245,15 +245,21 @@ def compute_reward(
             # PPO Gaussian exploration needs an explicit signal pointing
             # toward high positive action during the kick, otherwise the
             # policy parks at modest action values (the speed-gain term
-            # above alone isn't enough — the per-tick delta is tiny at
-            # 240Hz). Scaled by (1 - speed_ratio) so the bonus vanishes
-            # at max speed: no reward for throttle-pumping after saturation.
-            # Gated on stamina so dead horses don't game it by pumping.
+            # above alone isn't enough — the per-tick delta is tiny).
+            #
+            # NOTE (v4.4): removed the (1 - speed_ratio) headroom scaling
+            # that was in v4.3. It backfired: faster saturation meant a
+            # smaller reward window, so low actions (~+2.7) were the local
+            # optimum for this term. Without the gate, the bonus is
+            # monotonic in action, and "free reward while saturated" is
+            # harmless because (a) the drain cap makes burst and sustain
+            # cost the same stamina, and (b) physics output is identical
+            # once at max_speed — the agent is still behaving correctly.
+            # Still gated on stamina so a dead horse doesn't pump for free.
             if raw_tang_action is not None and raw_tang_action > 0 and stamina > 0.1:
                 # Normalize: +10 → 1.0, 0 → 0.0
                 action_magnitude = min(raw_tang_action / 10.0, 1.0)
-                headroom = 1.0 - speed_ratio  # 1.0 at cruise, 0.0 at max
-                reward += 2.5 * action_magnitude * headroom * kick_intensity * tick_scale
+                reward += 2.5 * action_magnitude * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
