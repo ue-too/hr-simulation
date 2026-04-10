@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v4.2 — kick acceleration bonus for faster top-speed reach"
+REWARD_VERSION = "v4.3 — kick action magnitude bonus + asymmetric action space [-3, +10]"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -51,6 +51,7 @@ def compute_reward(
     active_skills: set[str] | None = None,
     skill_reward_scale: float = 10.0,
     reward_phase: int = 3,
+    raw_tang_action: float | None = None,
 ) -> float:
     """Compute the per-step reward for a single horse.
 
@@ -239,6 +240,20 @@ def compute_reward(
             prev_vel = obs_prev["tangential_vel"]
             speed_gain = max(0.0, vel - prev_vel)
             reward += 3.0 * speed_gain * kick_intensity * tick_scale
+
+            # Action magnitude bonus — direct gradient for burst.
+            # PPO Gaussian exploration needs an explicit signal pointing
+            # toward high positive action during the kick, otherwise the
+            # policy parks at modest action values (the speed-gain term
+            # above alone isn't enough — the per-tick delta is tiny at
+            # 240Hz). Scaled by (1 - speed_ratio) so the bonus vanishes
+            # at max speed: no reward for throttle-pumping after saturation.
+            # Gated on stamina so dead horses don't game it by pumping.
+            if raw_tang_action is not None and raw_tang_action > 0 and stamina > 0.1:
+                # Normalize: +10 → 1.0, 0 → 0.0
+                action_magnitude = min(raw_tang_action / 10.0, 1.0)
+                headroom = 1.0 - speed_ratio  # 1.0 at cruise, 0.0 at max
+                reward += 2.5 * action_magnitude * headroom * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.

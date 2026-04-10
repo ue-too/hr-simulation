@@ -44,8 +44,10 @@ class HorseRacingSingleEnv(gym.Env):
         self.engine = HorseRacingEngine(track_path, self.config)
 
         # Action space: network outputs in [-1, 1], remapped in step() to
-        # full physics range. Tangential [-10, 10] and normal [-5, 5] match
-        # the BT jockey / engine action range.
+        # physics range. Tangential is asymmetric [-3, +10] — brake side
+        # trimmed because the auto-cruise spring already decelerates toward
+        # cruise at action=0; deep braking is rarely needed. Positive side
+        # keeps the full +10 burst capability. Normal stays symmetric [-5, 5].
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0], dtype=np.float32),
             high=np.array([1.0, 1.0], dtype=np.float32),
@@ -136,10 +138,13 @@ class HorseRacingSingleEnv(gym.Env):
     def remap_action(action: np.ndarray) -> tuple[float, float]:
         """Map network output [-1, 1] to physics action range.
 
-        Tangential: [-1, 1] → [-10, 10]  (matches BT jockey / engine range)
+        Tangential: [-1, 1] → [-3, +10]  (asymmetric — brake side trimmed,
+                                          full burst preserved. Neutral
+                                          action 0 → physics +3.5, biasing
+                                          initial policy toward pushing forward.)
         Normal:     [-1, 1] → [-5, 5]    (matches BT jockey / engine range)
         """
-        tang = float(action[0]) * 10.0
+        tang = float(action[0]) * 6.5 + 3.5
         norm = float(action[1]) * 5.0
         return tang, norm
 
@@ -174,6 +179,7 @@ class HorseRacingSingleEnv(gym.Env):
             active_skills=self._active_skills if self._active_skills else None,
             skill_reward_scale=self._skill_reward_scale,
             reward_phase=self._reward_phase,
+            raw_tang_action=tang,
         )
         self._prev_placement = placements[0]
 
