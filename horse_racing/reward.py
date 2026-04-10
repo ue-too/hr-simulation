@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v4.4 — remove headroom gating from kick magnitude bonus (was flat past +3.75)"
+REWARD_VERSION = "v4.5 — remove early-cruise bonus (was fighting kick-phase gradient)"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -215,11 +215,15 @@ def compute_reward(
         speed_ratio = max(0.0, min(1.0, speed_ratio))
 
         if progress < 0.50:
-            # Early: reward staying near cruise, but ONLY if at or above cruise.
-            # Below cruise gets nothing — the below-cruise penalty handles that.
-            # Presser archetype pushes pace early — exempt.
-            if archetype != "presser" and vel >= cruise_spd:
-                reward += 0.3 * (1.0 - speed_ratio) * tick_scale
+            # Early: no explicit speed target. The stamina-scaled speed
+            # bonus above and the below-cruise penalty together shape
+            # pacing. Earlier versions had a `0.3 * (1 - speed_ratio)`
+            # bonus here; multi-seed test (3 seeds × 150k steps) showed
+            # it fights the kick-phase gradient and suppresses burst
+            # actions — v57 trained 3M steps with raw kick action ~-0.5.
+            # Removing entirely (coef 0.0) gave 19/20 wins avg vs 0.7/20
+            # with coef 0.3. Softer 0.1 was unstable (1/8/20 across seeds).
+            pass
         elif progress < 0.75:
             # Mid: reward moderate push, target ramps from 0.0 at 50% to 0.5 at 75%
             ramp = (progress - 0.50) / 0.25  # 0→1 over mid phase
