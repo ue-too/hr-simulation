@@ -46,13 +46,13 @@ def update_stamina(
     drain = 0.0
 
     # Drain from jockey pushing forward — capped at the force needed to
-    # sustain max speed. The auto-cruise spring means the jockey only needs
-    # action = (max_speed - cruise_speed) to hold max speed. Any force
-    # beyond that is physically wasted (speed is clamped) and shouldn't
+    # sustain max speed. extra_tangential is already action × forward_accel,
+    # so the useful cap is (max_speed - cruise_speed) which is the spring
+    # deficit at max speed. Any force beyond that is wasted and shouldn't
     # cost extra stamina.
     if extra_tangential > 0:
-        max_useful = (eff.max_speed - eff.cruise_speed) / eff.forward_accel if eff.forward_accel > 0 else extra_tangential
-        capped_tangential = min(extra_tangential, max(max_useful, 0.0))
+        max_useful = max(eff.max_speed - eff.cruise_speed, 0.0)
+        capped_tangential = min(extra_tangential, max_useful)
         drain += capped_tangential * STAMINA_DRAIN_RATE
 
     # Drain from jockey steering laterally
