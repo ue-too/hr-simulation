@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v5.0 — burst-aware reward (gates kick on burst pool, not aerobic)"
+REWARD_VERSION = "v6.0 — close cliff exploit (gate kick reward on speed achieved + aerobic)"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -193,21 +193,25 @@ def compute_reward(
     if burst_margin < -0.25:
         reward -= 1.0 * abs(burst_margin + 0.25) * tick_scale * late_fade
 
-    # Hard aerobic exhaustion penalty — only fires when the cliff is
-    # imminent (aerobic ratio < 0.05). The cliff collapse drops cruise
-    # to 40% of normal, which is catastrophic and unrecoverable.
-    # Late-fade so the agent can flirt with the cliff during the kick.
+    # Hard aerobic exhaustion penalty. The cliff collapse drops cruise
+    # to 40% of normal, which is catastrophic and unrecoverable. v6.0:
+    # bumped 6× and removed late_fade — v60 collapsed by riding the cliff
+    # for 75% of the race because the old penalty was too weak to deter it.
+    # Cliff state must hurt EVERYWHERE, not just early.
     if stamina < 0.05:
-        reward -= 0.5 * tick_scale * late_fade
+        reward -= 3.0 * tick_scale
 
     # ── Burst checkpoint bonuses ───────────────────────────────────
     # One-shot rewards for arriving at key stages with the kick reserve
-    # intact. Credit-assignment is straightforward: protect the burst
-    # pool through the early/mid race so it's available for the kick.
+    # intact. v6.0: gated on aerobic stamina too — burst alone is
+    # gameable because it refills passively when the horse is cliff-
+    # cruising. v60 collapsed policies farmed these checkpoints despite
+    # being in the cliff state. A horse that's truly "saving its kick"
+    # has BOTH burst AND aerobic intact.
     prev_progress = obs_prev["track_progress"]
-    if prev_progress < 0.50 <= progress and burst > 0.85:
+    if prev_progress < 0.50 <= progress and burst > 0.85 and stamina > 0.30:
         reward += 50.0
-    if prev_progress < 0.75 <= progress and burst > 0.60:
+    if prev_progress < 0.75 <= progress and burst > 0.60 and stamina > 0.20:
         reward += 100.0
 
     # ── Speed-progress curve ────────────────────────────────────────
@@ -257,15 +261,19 @@ def compute_reward(
             # policy parks at modest action values (the speed-gain term
             # above alone isn't enough — the per-tick delta is tiny).
             #
-            # Gated on burst (not aerobic) under v5.0: a horse with empty
-            # burst pool literally cannot kick (maxSpeed clamps to
-            # cruise + 0.5), so paying the action-magnitude bonus while
-            # the burst is dry would teach the agent to waste tang_action
-            # for nothing.
-            if raw_tang_action is not None and raw_tang_action > 0 and burst > 0.1:
+            # v6.0: gated on actual speed achieved (speed_ratio) AND
+            # aerobic stamina. v60 collapsed because the bonus paid out
+            # for slamming the throttle even when the horse was in the
+            # cliff state and the kick had zero effect (speed clamped to
+            # cruise + 0.5). The agent learned to slam tang=+10 from the
+            # gate to farm this bonus. Now: only pays if the kick is
+            # actually working — the horse is moving fast AND has the
+            # aerobic headroom to sustain it.
+            if (raw_tang_action is not None and raw_tang_action > 0
+                    and speed_ratio > 0.2 and stamina > 0.10):
                 # Normalize: +10 → 1.0, 0 → 0.0
                 action_magnitude = min(raw_tang_action / 10.0, 1.0)
-                reward += 2.5 * action_magnitude * kick_intensity * tick_scale
+                reward += 2.5 * action_magnitude * speed_ratio * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
