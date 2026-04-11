@@ -10,7 +10,7 @@ all audible to the agent.
 """
 from __future__ import annotations
 
-REWARD_VERSION = "v4.5 — remove early-cruise bonus (was fighting kick-phase gradient)"
+REWARD_VERSION = "v5.0 — burst-aware reward (gates kick on burst pool, not aerobic)"
 
 from horse_racing.skills import compute_skill_bonus
 from horse_racing.types import TRACK_HALF_WIDTH
@@ -79,6 +79,7 @@ def compute_reward(
     reward = 0.0
     progress = obs_curr["track_progress"]
     stamina = obs_curr["stamina_ratio"]
+    burst = obs_curr.get("burst_ratio", 1.0)
     vel = obs_curr["tangential_vel"]
     max_spd = obs_curr["effective_max_speed"]
     cruise_spd = obs_curr["effective_cruise_speed"]
@@ -176,34 +177,37 @@ def compute_reward(
     if collision_occurred:
         reward -= 2.0
 
-    # ── Stamina budget ──────────────────────────────────────────────
-    # Penalize overspending relative to linear baseline. No bonus for
-    # conservation — the agent should use its stamina, not hoard it.
-    # Fade out penalties after 75% progress — burning stamina in the
-    # final stretch is correct racing strategy, not a mistake.
-    # Softened: only fires when stamina is 25% below baseline (was 15%),
-    # and at lower magnitude, so the model can learn to race before
-    # learning to budget.
+    # ── Burst budget ────────────────────────────────────────────────
+    # Burst is the kick reserve — under the redesigned physics, the
+    # agent should arrive at ~75% progress with full burst, then spend
+    # it down to zero by the finish. Penalize spending burst early.
+    # No symmetric "save it" reward — that's the agent's job to learn
+    # via the kick reward downstream.
     late_fade = max(0.0, 1.0 - max(0.0, progress - 0.75) / 0.25)  # 1.0 until 75%, 0.0 at 100%
-    expected_stamina = 1.0 - progress
-    stamina_margin = stamina - expected_stamina
-    if stamina_margin < -0.25:
-        reward -= 1.0 * abs(stamina_margin + 0.25) * tick_scale * late_fade
+    # Expected: full burst until 75%, then linear drain to 0 at finish.
+    if progress < 0.75:
+        expected_burst = 1.0
+    else:
+        expected_burst = max(0.0, 1.0 - (progress - 0.75) / 0.25)
+    burst_margin = burst - expected_burst
+    if burst_margin < -0.25:
+        reward -= 1.0 * abs(burst_margin + 0.25) * tick_scale * late_fade
 
-    # Hard exhaustion penalty — fades out in final stretch so agent
-    # can deplete stamina for the kick without per-tick punishment.
-    # Threshold at 0.05: only fires when truly empty, not during normal
-    # pacing. The stamina_budget penalty above handles gradual overspend.
+    # Hard aerobic exhaustion penalty — only fires when the cliff is
+    # imminent (aerobic ratio < 0.05). The cliff collapse drops cruise
+    # to 40% of normal, which is catastrophic and unrecoverable.
+    # Late-fade so the agent can flirt with the cliff during the kick.
     if stamina < 0.05:
         reward -= 0.5 * tick_scale * late_fade
 
-    # ── Stamina checkpoint bonuses ─────────────────────────────────
-    # One-shot rewards for having healthy reserves at key race stages.
-    # Easy to credit-assign — model learns that conserving pays off.
+    # ── Burst checkpoint bonuses ───────────────────────────────────
+    # One-shot rewards for arriving at key stages with the kick reserve
+    # intact. Credit-assignment is straightforward: protect the burst
+    # pool through the early/mid race so it's available for the kick.
     prev_progress = obs_prev["track_progress"]
-    if prev_progress < 0.50 <= progress and stamina > 0.55:
+    if prev_progress < 0.50 <= progress and burst > 0.85:
         reward += 50.0
-    if prev_progress < 0.75 <= progress and stamina > 0.20:
+    if prev_progress < 0.75 <= progress and burst > 0.60:
         reward += 100.0
 
     # ── Speed-progress curve ────────────────────────────────────────
@@ -233,10 +237,12 @@ def compute_reward(
         else:
             # Late (kick): strong reward for sprinting. Ramps quickly so
             # the model feels the signal early in the kick phase.
-            # Stamina floor of 0.3 ensures the kick reward is always
-            # meaningful — no chicken-and-egg with stamina conservation.
+            # Burst floor of 0.3 ensures the kick reward is always
+            # meaningful when there's *some* burst available, but a
+            # horse that emptied its burst pool early gets a much
+            # weaker signal — matching the physics: no burst, no kick.
             kick_intensity = min(1.0, (progress - 0.75) / 0.15)  # 0→1 over 75-90%, then 1.0
-            reward += 5.0 * speed_ratio * kick_intensity * max(stamina, 0.3) * tick_scale
+            reward += 5.0 * speed_ratio * kick_intensity * max(burst, 0.3) * tick_scale
 
             # Acceleration bonus: reward speed GAINS during kick.
             # Incentivizes slamming the throttle (high action) to reach
@@ -251,36 +257,38 @@ def compute_reward(
             # policy parks at modest action values (the speed-gain term
             # above alone isn't enough — the per-tick delta is tiny).
             #
-            # NOTE (v4.4): removed the (1 - speed_ratio) headroom scaling
-            # that was in v4.3. It backfired: faster saturation meant a
-            # smaller reward window, so low actions (~+2.7) were the local
-            # optimum for this term. Without the gate, the bonus is
-            # monotonic in action, and "free reward while saturated" is
-            # harmless because (a) the drain cap makes burst and sustain
-            # cost the same stamina, and (b) physics output is identical
-            # once at max_speed — the agent is still behaving correctly.
-            # Still gated on stamina so a dead horse doesn't pump for free.
-            if raw_tang_action is not None and raw_tang_action > 0 and stamina > 0.1:
+            # Gated on burst (not aerobic) under v5.0: a horse with empty
+            # burst pool literally cannot kick (maxSpeed clamps to
+            # cruise + 0.5), so paying the action-magnitude bonus while
+            # the burst is dry would teach the agent to waste tang_action
+            # for nothing.
+            if raw_tang_action is not None and raw_tang_action > 0 and burst > 0.1:
                 # Normalize: +10 → 1.0, 0 → 0.0
                 action_magnitude = min(raw_tang_action / 10.0, 1.0)
                 reward += 2.5 * action_magnitude * kick_intensity * tick_scale
 
     # ── Finish order bonus ───────────────────────────────────────────
     # Large terminal reward for racing position.
-    # Also penalize finishing with too much stamina — wasted reserves
-    # mean the agent was too conservative and could have raced faster.
+    # Also penalize finishing with unspent burst — wasted kick reserves
+    # mean the agent was too conservative in the final stretch.
     if finish_order is not None:
         idx = min(finish_order - 1, len(FINISH_ORDER_BONUS) - 1)
         reward += FINISH_ORDER_BONUS[idx]
-        # Ideal finish: 10-30% stamina. Penalize excess above 40%.
-        # Scaled to match finish bonus magnitude — hoarding 60% stamina
-        # costs 400 points, enough to drop from 1st to 2nd place value.
-        if stamina > 0.40:
-            reward -= 200.0 * (stamina - 0.40)
-        # Reward finishing with some stamina left (good pacing).
-        # Sweet spot: 10-30% = paced well and kicked hard.
-        if 0.10 <= stamina <= 0.30:
+        # Penalize unspent burst at the line. A horse that crosses the
+        # finish with >30% burst left didn't kick hard enough. Scaled
+        # to match finish bonus magnitude — full burst left costs 350,
+        # roughly the gap between adjacent finish places.
+        if burst > 0.30:
+            reward -= 500.0 * (burst - 0.30)
+        # Reward fully spending the burst — the kick was committed.
+        if burst <= 0.10:
             reward += 100.0
+        # Aerobic safety check: don't reward cliff-collapsing finishes.
+        # If the agent crashed through the cliff threshold (aerobic <
+        # 0.05), it cruise-collapsed, which usually means it pushed too
+        # early and didn't recover. Small penalty.
+        if stamina < 0.05:
+            reward -= 50.0
         # Reward crossing the line at high speed — reinforces sprinting
         # through the finish rather than coasting. ~150 points at max speed.
         if max_spd > 1e-6:
@@ -435,15 +443,17 @@ def _closer_bonus(
     """
     bonus = 0.0
     stamina = obs_curr["stamina_ratio"]
+    burst = obs_curr.get("burst_ratio", 1.0)
 
-    # Early race (0-50%): bonus for conserving stamina, no penalty for being back
+    # Early race (0-50%): bonus for conserving the burst pool. Closers
+    # should arrive at the kick phase with a full reserve.
     if progress < 0.5:
-        if stamina > (1.0 - progress * 0.3):
+        if burst > 0.95:
             bonus += 0.15
         if placement >= num_horses - 1:
             bonus += 0.05
 
-    # Mid race (50-75%): gradually build speed while maintaining reserves
+    # Mid race (50-75%): gradually build speed while protecting the burst.
     elif progress < 0.75:
         vel = obs_curr["tangential_vel"]
         cruise = obs_curr["effective_cruise_speed"]
@@ -454,8 +464,9 @@ def _closer_bonus(
         if vel > cruise and max_spd > cruise + 1e-6:
             bonus += 0.15 * ramp * (vel - cruise) / (max_spd - cruise)
 
-        # Reward maintaining stamina reserves for the kick
-        if stamina > (1.0 - progress * 0.5):
+        # Reward arriving at the kick with full burst. This is the
+        # closer's defining trait — late explosion off a kept reserve.
+        if burst > 0.80:
             bonus += 0.1
 
     # Late race (75-100%): big bonus for gaining positions
