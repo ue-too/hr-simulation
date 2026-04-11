@@ -477,6 +477,11 @@ class HorseRacingEngine:
                 if hs.base_attrs.stamina > 1e-6
                 else 0.0
             )
+            burst_ratio = (
+                hs.runtime.burst_pool / hs.runtime.burst_max
+                if hs.runtime.burst_max > 1e-6
+                else 0.0
+            )
 
             # Cornering margin
             if frame.turn_radius < 1e6:
@@ -514,6 +519,7 @@ class HorseRacingEngine:
                     "track_progress": hs.track_progress,
                     "curvature": curvature,
                     "stamina_ratio": stamina_ratio,
+                    "burst_ratio": burst_ratio,
                     "effective_cruise_speed": hs.effective_attrs.cruise_speed,
                     "effective_max_speed": hs.effective_attrs.max_speed,
                     "relatives": [
@@ -577,9 +583,9 @@ class HorseRacingEngine:
     def obs_to_array(
         self, obs: dict, active_skills: set[str] | None = None,
     ) -> np.ndarray:
-        """Convert observation dict to flat numpy array (111,).
+        """Convert observation dict to flat numpy array (112,).
 
-        Layout: 8 ego + 76 relative (19×4) + 13 track/attr + 8 modifier flags + 6 skill flags.
+        Layout: 9 ego + 76 relative (19×4) + 13 track/attr + 8 modifier flags + 6 skill flags.
         """
         active = obs.get("active_modifiers", set())
         modifier_flags = [1.0 if mid in active else 0.0 for mid in MODIFIER_IDS]
@@ -600,6 +606,7 @@ class HorseRacingEngine:
                 obs["track_progress"],
                 obs["curvature"],
                 obs["stamina_ratio"],
+                obs["burst_ratio"],
                 obs["effective_cruise_speed"],
                 obs["effective_max_speed"],
                 *rel_flat,

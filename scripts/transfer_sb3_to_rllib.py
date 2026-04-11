@@ -74,12 +74,12 @@ def discover(track_path: str):
     # SB3 dummy
     class DummyEnv(gym.Env):
         def __init__(self):
-            self.observation_space = spaces.Box(-np.inf, np.inf, (111,), np.float32)
+            self.observation_space = spaces.Box(-np.inf, np.inf, (112,), np.float32)
             self.action_space = spaces.Box(-1, 1, (2,), np.float32)
         def reset(self, **kw):
-            return np.zeros(111, np.float32), {}
+            return np.zeros(112, np.float32), {}
         def step(self, a):
-            return np.zeros(111, np.float32), 0, True, False, {}
+            return np.zeros(112, np.float32), 0, True, False, {}
 
     sb3_model = PPO("MlpPolicy", DummyEnv(), policy_kwargs=dict(net_arch=[256, 256]))
     print("=== SB3 policy state_dict ===")
@@ -100,11 +100,11 @@ def transfer_weights(sb3_model: PPO, rllib_algo, policy_id: str = "shared_policy
     """Copy SB3 PPO weights into RLlib model with action scaling.
 
     Weight mapping (SB3 → RLlib old API stack):
-        mlp_extractor.policy_net.0  → _hidden_layers.0._model.0   (256, 111)
+        mlp_extractor.policy_net.0  → _hidden_layers.0._model.0   (256, 112)
         mlp_extractor.policy_net.2  → _hidden_layers.1._model.0   (256, 256)
         action_net                  → _logits._model.0 [rows 0:2] (2, 256) × scale
         log_std                     → _logits._model.0 [rows 2:4] (scaled)
-        mlp_extractor.value_net.0   → _value_branch_separate.0._model.0  (256, 111)
+        mlp_extractor.value_net.0   → _value_branch_separate.0._model.0  (256, 112)
         mlp_extractor.value_net.2   → _value_branch_separate.1._model.0  (256, 256)
         value_net                   → _value_branch._model.0              (1, 256)
     """
@@ -166,7 +166,7 @@ def transfer_weights(sb3_model: PPO, rllib_algo, policy_id: str = "shared_policy
 def verify_transfer(sb3_model: PPO, rllib_algo, policy_id: str = "shared_policy", n_samples: int = 100):
     """Compare outputs of both models on random observations."""
     rng = np.random.default_rng(42)
-    obs_batch = rng.standard_normal((n_samples, 111)).astype(np.float32)
+    obs_batch = rng.standard_normal((n_samples, 112)).astype(np.float32)
 
     # SB3 forward (deterministic action means)
     sb3_policy = sb3_model.policy

@@ -72,7 +72,7 @@ def test_engine_obs_to_array():
 
     obs = engine.get_observations()
     arr = engine.obs_to_array(obs[0])
-    assert arr.shape == (111,)
+    assert arr.shape == (112,)
     assert arr.dtype == np.float32
 
 
@@ -103,9 +103,9 @@ def test_relatives_sorted_by_progress():
 
     # First relative should be the horse furthest ahead (horse 1 which accelerated)
     arr = engine.obs_to_array(obs0)
-    assert arr.shape == (111,)
-    # rel_horse_1 tang offset (index 8) should be positive (ahead)
-    assert arr[8] > 0, f"Expected first relative horse ahead, got tang_off={arr[8]}"
+    assert arr.shape == (112,)
+    # rel_horse_1 tang offset (index 9) should be positive (ahead)
+    assert arr[9] > 0, f"Expected first relative horse ahead, got tang_off={arr[9]}"
 
 
 def test_engine_reset():

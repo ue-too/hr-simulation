@@ -24,7 +24,7 @@ SKILL_IDS: list[str] = [
     "cornering_line",
     "pace_pressure",
 ]
-OBS_SIZE: int = 8 + MAX_REL_HORSES * REL_FEATURES_PER_HORSE + 13 + 8 + NUM_SKILLS  # 111
+OBS_SIZE: int = 9 + MAX_REL_HORSES * REL_FEATURES_PER_HORSE + 13 + 8 + NUM_SKILLS  # 112
 
 # Rectangle horse dimensions (realistic: ~2.5 m nose-to-tail, ~0.65 m shoulder width)
 HORSE_LENGTH: float = 2.5
