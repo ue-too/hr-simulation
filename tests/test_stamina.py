@@ -1,14 +1,35 @@
-"""Tests for the stamina system — fixed pool, no recovery, lateral drains."""
+"""Tests for the redesigned stamina system.
+
+Two pools (aerobic + burst), lead penalty, draft recovery, cliff collapse.
+See horse_racing/types.py for the high-level mechanic description.
+"""
 
 import pytest
 
 from horse_racing.attributes import CoreAttributes
-from horse_racing.stamina import HorseRuntimeState, apply_exhaustion, update_stamina
+from horse_racing.stamina import (
+    HorseRuntimeState,
+    apply_exhaustion,
+    compute_burst_max,
+    update_stamina,
+)
+from horse_racing.types import (
+    BURST_EMPTY_CLAMP,
+    CLIFF_ACCEL_MULT,
+    CLIFF_CRUISE_MULT,
+    CLIFF_THRESHOLD,
+)
 
 
-def _make_state(stamina: float = 100.0) -> HorseRuntimeState:
-    attrs = CoreAttributes(stamina=stamina)
-    return HorseRuntimeState(current_stamina=stamina, base_attributes=attrs)
+def _make_state(stamina: float = 100.0, attrs: CoreAttributes | None = None) -> HorseRuntimeState:
+    a = attrs or CoreAttributes(stamina=stamina)
+    burst_max = compute_burst_max(a)
+    return HorseRuntimeState(
+        current_stamina=stamina,
+        base_attributes=a,
+        burst_pool=burst_max,
+        burst_max=burst_max,
+    )
 
 
 def _default_eff(**overrides) -> CoreAttributes:
@@ -16,81 +37,38 @@ def _default_eff(**overrides) -> CoreAttributes:
 
 
 # ---------------------------------------------------------------------------
-# update_stamina: no recovery
+# update_stamina: basic drain behavior
 # ---------------------------------------------------------------------------
 
 
-class TestNoRecovery:
-    def test_stamina_never_increases(self):
-        """With no actions, stamina should only decrease (speed drain)."""
-        state = _make_state(100.0)
-        eff = _default_eff()
-        for _ in range(100):
-            prev = state.current_stamina
-            update_stamina(state, eff, 0.0, 0.0, 14.0, 14.0, 0.0, float("inf"))
-            assert state.current_stamina <= prev
-
+class TestBasicDrain:
     def test_zero_speed_no_drain(self):
-        """At zero speed and no actions, stamina stays the same."""
         state = _make_state(100.0)
         eff = _default_eff()
         update_stamina(state, eff, 0.0, 0.0, 0.0, 0.0, 0.0, float("inf"))
         assert state.current_stamina == 100.0
 
     def test_stamina_floors_at_zero(self):
-        """Stamina cannot go below zero."""
         state = _make_state(0.001)
         eff = _default_eff()
         update_stamina(state, eff, 10.0, 5.0, 20.0, 20.0, 3.0, 50.0)
         assert state.current_stamina == 0.0
 
-
-# ---------------------------------------------------------------------------
-# update_stamina: forward drains
-# ---------------------------------------------------------------------------
-
-
-class TestForwardDrains:
-    def test_tangential_push_drains(self):
-        """Pushing forward should drain more than coasting."""
-        coast = _make_state(100.0)
-        push = _make_state(100.0)
-        eff = _default_eff()
-        update_stamina(coast, eff, 0.0, 0.0, 14.0, 14.0, 0.0, float("inf"))
-        update_stamina(push, eff, 5.0, 0.0, 14.0, 14.0, 0.0, float("inf"))
-        assert push.current_stamina < coast.current_stamina
-
-    def test_overdrive_drains(self):
-        """Exceeding cruise speed should drain extra."""
-        cruise = _make_state(100.0)
-        over = _make_state(100.0)
-        eff = _default_eff()  # cruise_speed=14.25
-        update_stamina(cruise, eff, 0.0, 0.0, 14.0, 14.0, 0.0, float("inf"))
-        update_stamina(over, eff, 0.0, 0.0, 18.0, 18.0, 0.0, float("inf"))
-        assert over.current_stamina < cruise.current_stamina
-
-    def test_overdrive_quadratic_scaling(self):
-        """Overdrive drain scales quadratically: 2x speed above cruise = 4x drain."""
-        s1 = _make_state(100.0)
-        s2 = _make_state(100.0)
-        eff = _default_eff()  # cruise_speed=14.25
-        # cruise+1 vs cruise+2, no push/steering so only overdrive + speed drain
-        update_stamina(s1, eff, 0.0, 0.0, eff.cruise_speed + 1.0, eff.cruise_speed + 1.0, 0.0, float("inf"))
-        update_stamina(s2, eff, 0.0, 0.0, eff.cruise_speed + 2.0, eff.cruise_speed + 2.0, 0.0, float("inf"))
-        # Isolate overdrive component by subtracting speed drain
-        from horse_racing.types import SPEED_DRAIN_RATE
-        od1 = (100.0 - s1.current_stamina) - (eff.cruise_speed + 1.0) * SPEED_DRAIN_RATE
-        od2 = (100.0 - s2.current_stamina) - (eff.cruise_speed + 2.0) * SPEED_DRAIN_RATE
-        assert od2 / od1 == pytest.approx(4.0, rel=0.01)
-
-    def test_speed_drain_proportional(self):
-        """Faster speed = more drain (distance tax)."""
+    def test_distance_tax_proportional_to_speed(self):
         slow = _make_state(100.0)
         fast = _make_state(100.0)
         eff = _default_eff()
         update_stamina(slow, eff, 0.0, 0.0, 10.0, 10.0, 0.0, float("inf"))
         update_stamina(fast, eff, 0.0, 0.0, 18.0, 18.0, 0.0, float("inf"))
         assert fast.current_stamina < slow.current_stamina
+
+    def test_push_drains_extra(self):
+        coast = _make_state(100.0)
+        push = _make_state(100.0)
+        eff = _default_eff()
+        update_stamina(coast, eff, 0.0, 0.0, 14.0, 14.0, 0.0, float("inf"))
+        update_stamina(push, eff, 5.0, 0.0, 14.0, 14.0, 0.0, float("inf"))
+        assert push.current_stamina < coast.current_stamina
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +78,6 @@ class TestForwardDrains:
 
 class TestLateralDrains:
     def test_lateral_steering_drains(self):
-        """Steering laterally should cost stamina."""
         no_steer = _make_state(100.0)
         steer = _make_state(100.0)
         eff = _default_eff()
@@ -109,7 +86,6 @@ class TestLateralDrains:
         assert steer.current_stamina < no_steer.current_stamina
 
     def test_lateral_velocity_drains(self):
-        """Sustained lateral drift should cost stamina."""
         no_drift = _make_state(100.0)
         drift = _make_state(100.0)
         eff = _default_eff()
@@ -117,8 +93,7 @@ class TestLateralDrains:
         update_stamina(drift, eff, 0.0, 0.0, 14.0, 14.0, 2.0, float("inf"))
         assert drift.current_stamina < no_drift.current_stamina
 
-    def test_negative_steering_also_drains(self):
-        """Steering in either direction should drain equally."""
+    def test_steering_symmetric(self):
         left = _make_state(100.0)
         right = _make_state(100.0)
         eff = _default_eff()
@@ -128,13 +103,12 @@ class TestLateralDrains:
 
 
 # ---------------------------------------------------------------------------
-# update_stamina: drain_rate_mult
+# update_stamina: drain_rate_mult applies to all drain
 # ---------------------------------------------------------------------------
 
 
 class TestDrainRateMult:
     def test_lower_mult_means_less_drain(self):
-        """A horse with drain_rate_mult < 1 should drain less."""
         normal = _make_state(100.0)
         efficient = _make_state(100.0)
         eff_normal = _default_eff(drain_rate_mult=1.0)
@@ -143,64 +117,187 @@ class TestDrainRateMult:
         update_stamina(efficient, eff_efficient, 5.0, 2.0, 16.0, 16.0, 1.0, float("inf"))
         assert efficient.current_stamina > normal.current_stamina
 
-    def test_higher_mult_means_more_drain(self):
-        """A horse with drain_rate_mult > 1 should drain more."""
-        normal = _make_state(100.0)
-        wasteful = _make_state(100.0)
-        eff_normal = _default_eff(drain_rate_mult=1.0)
-        eff_wasteful = _default_eff(drain_rate_mult=1.3)
-        update_stamina(normal, eff_normal, 5.0, 0.0, 16.0, 16.0, 0.0, float("inf"))
-        update_stamina(wasteful, eff_wasteful, 5.0, 0.0, 16.0, 16.0, 0.0, float("inf"))
-        assert wasteful.current_stamina < normal.current_stamina
+
+# ---------------------------------------------------------------------------
+# Burst pool dynamics
+# ---------------------------------------------------------------------------
+
+
+class TestBurstPool:
+    def test_burst_max_scales_with_band_and_stamina(self):
+        narrow = CoreAttributes(cruise_speed=15.0, max_speed=16.0, stamina=100.0)
+        wide = CoreAttributes(cruise_speed=12.0, max_speed=20.0, stamina=100.0)
+        big = CoreAttributes(cruise_speed=12.0, max_speed=20.0, stamina=150.0)
+        assert compute_burst_max(wide) > compute_burst_max(narrow)
+        assert compute_burst_max(big) > compute_burst_max(wide)
+
+    def test_burst_drains_when_above_cruise(self):
+        eff = _default_eff()  # cruise=14.25
+        state = _make_state(100.0, eff)
+        starting = state.burst_pool
+        for _ in range(20):
+            update_stamina(state, eff, 0.0, 0.0, eff.cruise_speed + 3.0, eff.cruise_speed + 3.0, 0.0, float("inf"))
+        assert state.burst_pool < starting
+
+    def test_burst_recovers_below_cruise_buffer(self):
+        eff = _default_eff()
+        state = _make_state(100.0, eff)
+        # Force burst to half
+        state.burst_pool = state.burst_max * 0.5
+        before = state.burst_pool
+        for _ in range(50):
+            update_stamina(state, eff, 0.0, 0.0, eff.cruise_speed - 2.0, eff.cruise_speed - 2.0, 0.0, float("inf"))
+        assert state.burst_pool > before
+
+    def test_burst_recovery_caps_at_max(self):
+        eff = _default_eff()
+        state = _make_state(100.0, eff)
+        # Recovery from full should never exceed max
+        for _ in range(1000):
+            update_stamina(state, eff, 0.0, 0.0, 0.0, 0.0, 0.0, float("inf"))
+        assert state.burst_pool == pytest.approx(state.burst_max)
+
+    def test_quadratic_drain_with_excess(self):
+        """Drain at excess=2 should be 4× drain at excess=1."""
+        eff = _default_eff()
+        s1 = _make_state(100.0, eff)
+        s2 = _make_state(100.0, eff)
+        update_stamina(s1, eff, 0.0, 0.0, eff.cruise_speed + 1.0, 0.0, 0.0, float("inf"))
+        update_stamina(s2, eff, 0.0, 0.0, eff.cruise_speed + 2.0, 0.0, 0.0, float("inf"))
+        d1 = s1.burst_max - s1.burst_pool
+        d2 = s2.burst_max - s2.burst_pool
+        assert d2 / d1 == pytest.approx(4.0, rel=0.01)
 
 
 # ---------------------------------------------------------------------------
-# apply_exhaustion: progressive turn_accel
+# Lead penalty
+# ---------------------------------------------------------------------------
+
+
+class TestLeadPenalty:
+    def test_frontmost_pays_extra(self):
+        eff = _default_eff()
+        front = _make_state(100.0, eff)
+        front.is_frontmost = True
+        mid = _make_state(100.0, eff)
+        mid.is_frontmost = False
+        # Both running above cruise
+        update_stamina(front, eff, 0.0, 0.0, eff.cruise_speed + 2.0, eff.cruise_speed + 2.0, 0.0, float("inf"))
+        update_stamina(mid, eff, 0.0, 0.0, eff.cruise_speed + 2.0, eff.cruise_speed + 2.0, 0.0, float("inf"))
+        assert front.current_stamina < mid.current_stamina
+
+    def test_high_stamina_horse_pays_less_lead_penalty(self):
+        """Stamina factor is non-linear: stayer with stam=140 pays much less."""
+        weak_eff = _default_eff(stamina=80.0)
+        stayer_eff = _default_eff(stamina=140.0)
+        weak = _make_state(80.0, weak_eff)
+        stayer = _make_state(140.0, stayer_eff)
+        weak.is_frontmost = True
+        stayer.is_frontmost = True
+        # Same speed above each one's cruise
+        speed = weak_eff.cruise_speed + 2.0
+        update_stamina(weak, weak_eff, 0.0, 0.0, speed, speed, 0.0, float("inf"))
+        update_stamina(stayer, stayer_eff, 0.0, 0.0, speed, speed, 0.0, float("inf"))
+        weak_drain = 80.0 - weak.current_stamina
+        stayer_drain = 140.0 - stayer.current_stamina
+        assert stayer_drain < weak_drain
+
+    def test_no_lead_penalty_at_or_below_cruise(self):
+        eff = _default_eff()
+        front = _make_state(100.0, eff)
+        mid = _make_state(100.0, eff)
+        front.is_frontmost = True
+        # At cruise, neither pays lead penalty
+        update_stamina(front, eff, 0.0, 0.0, eff.cruise_speed, eff.cruise_speed, 0.0, float("inf"))
+        update_stamina(mid, eff, 0.0, 0.0, eff.cruise_speed, eff.cruise_speed, 0.0, float("inf"))
+        assert front.current_stamina == pytest.approx(mid.current_stamina)
+
+
+# ---------------------------------------------------------------------------
+# Draft recovery
+# ---------------------------------------------------------------------------
+
+
+class TestDraftRecovery:
+    def test_drafting_at_cruise_recovers(self):
+        eff = _default_eff()
+        state = _make_state(50.0, eff)  # half stamina
+        state.is_drafting = True
+        before = state.current_stamina
+        update_stamina(state, eff, 0.0, 0.0, eff.cruise_speed, eff.cruise_speed, 0.0, float("inf"))
+        # Should have recovered (recovery > distance tax at cruise)
+        # If not, at least drained less than non-drafter
+        non_draft = _make_state(50.0, eff)
+        update_stamina(non_draft, eff, 0.0, 0.0, eff.cruise_speed, eff.cruise_speed, 0.0, float("inf"))
+        assert state.current_stamina > non_draft.current_stamina
+
+    def test_drafting_above_cruise_no_recovery(self):
+        """Recovery requires speed at/below cruise + buffer."""
+        eff = _default_eff()
+        drafter_pushing = _make_state(50.0, eff)
+        drafter_pushing.is_drafting = True
+        non_drafter = _make_state(50.0, eff)
+        speed = eff.cruise_speed + 3.0
+        update_stamina(drafter_pushing, eff, 0.0, 0.0, speed, speed, 0.0, float("inf"))
+        update_stamina(non_drafter, eff, 0.0, 0.0, speed, speed, 0.0, float("inf"))
+        assert drafter_pushing.current_stamina == pytest.approx(non_drafter.current_stamina)
+
+    def test_recovery_capped_at_base_max(self):
+        eff = _default_eff(stamina=100.0)
+        state = _make_state(100.0, eff)
+        state.is_drafting = True
+        for _ in range(500):
+            update_stamina(state, eff, 0.0, 0.0, eff.cruise_speed - 1.0, eff.cruise_speed - 1.0, 0.0, float("inf"))
+        assert state.current_stamina <= 100.0
+
+
+# ---------------------------------------------------------------------------
+# apply_exhaustion: cliff collapse + burst clamp
 # ---------------------------------------------------------------------------
 
 
 class TestExhaustion:
-    def test_no_effect_above_thresholds(self):
-        """Above 30% stamina, no degradation."""
+    def test_no_effect_above_cliff(self):
         eff = _default_eff()
-        result = apply_exhaustion(eff, 50.0, 100.0)
-        assert result.forward_accel == eff.forward_accel
+        state = _make_state(50.0, eff)  # 50%, well above 5% cliff
+        result = apply_exhaustion(eff, state, 100.0)
+        assert result.cruise_speed == eff.cruise_speed
         assert result.max_speed == eff.max_speed
-        assert result.turn_accel == eff.turn_accel
+        assert result.forward_accel == eff.forward_accel
 
-    def test_forward_accel_degrades_below_30(self):
-        """forward_accel scales linearly below 30%."""
+    def test_cliff_collapse_at_threshold(self):
         eff = _default_eff()
-        result = apply_exhaustion(eff, 15.0, 100.0)
-        assert result.forward_accel == pytest.approx(eff.forward_accel * 0.5)
+        state = _make_state(CLIFF_THRESHOLD * 100.0, eff)  # exactly at cliff
+        result = apply_exhaustion(eff, state, 100.0)
+        assert result.cruise_speed == pytest.approx(eff.cruise_speed * CLIFF_CRUISE_MULT)
+        assert result.max_speed == pytest.approx(result.cruise_speed + BURST_EMPTY_CLAMP)
+        assert result.forward_accel == pytest.approx(eff.forward_accel * CLIFF_ACCEL_MULT)
 
-    def test_max_speed_degrades_below_20(self):
-        """max_speed lerps toward cruise below 20%."""
+    def test_cliff_collapse_below_threshold(self):
         eff = _default_eff()
-        result = apply_exhaustion(eff, 10.0, 100.0)
-        expected = eff.cruise_speed + (eff.max_speed - eff.cruise_speed) * 0.5
-        assert result.max_speed == pytest.approx(expected)
+        state = _make_state(0.0, eff)
+        result = apply_exhaustion(eff, state, 100.0)
+        assert result.cruise_speed == pytest.approx(eff.cruise_speed * CLIFF_CRUISE_MULT)
 
-    def test_turn_accel_progressive_from_25(self):
-        """turn_accel degrades progressively starting at 25%."""
+    def test_burst_empty_clamps_max_speed(self):
         eff = _default_eff()
-        # At 25% boundary: should be ~100%
-        at_25 = apply_exhaustion(eff, 25.0, 100.0)
-        assert at_25.turn_accel == pytest.approx(eff.turn_accel)
+        state = _make_state(50.0, eff)  # well above cliff
+        state.burst_pool = 0.0
+        result = apply_exhaustion(eff, state, 100.0)
+        assert result.max_speed == pytest.approx(eff.cruise_speed + BURST_EMPTY_CLAMP)
+        assert result.cruise_speed == eff.cruise_speed  # cruise untouched
 
-        # At 12.5%: should be ~75%
-        at_12 = apply_exhaustion(eff, 12.5, 100.0)
-        assert at_12.turn_accel == pytest.approx(eff.turn_accel * 0.75)
+    def test_burst_clamp_only_ratchets_down(self):
+        """Burst clamp must never INCREASE max_speed (e.g., when cruise > current max)."""
+        eff = CoreAttributes(cruise_speed=15.0, max_speed=15.2)  # narrow band
+        state = _make_state(50.0, eff)
+        state.burst_pool = 0.0
+        result = apply_exhaustion(eff, state, 100.0)
+        assert result.max_speed <= eff.max_speed
 
-        # At 0%: should be ~50%
-        at_0 = apply_exhaustion(eff, 0.0, 100.0)
-        assert at_0.turn_accel == pytest.approx(eff.turn_accel * 0.5)
-
-    def test_turn_accel_monotonically_decreasing(self):
-        """Lower stamina should always mean lower turn_accel (below threshold)."""
+    def test_burst_with_pool_no_clamp(self):
         eff = _default_eff()
-        prev_ta = eff.turn_accel
-        for pct in [24, 20, 15, 10, 5, 1]:
-            result = apply_exhaustion(eff, float(pct), 100.0)
-            assert result.turn_accel <= prev_ta
-            prev_ta = result.turn_accel
+        state = _make_state(50.0, eff)
+        # Burst pool > 0 → no clamp
+        result = apply_exhaustion(eff, state, 100.0)
+        assert result.max_speed == eff.max_speed

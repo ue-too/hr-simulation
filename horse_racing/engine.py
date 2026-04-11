@@ -21,10 +21,16 @@ from horse_racing.modifiers import (
     SKILL_MODIFIER_IDS,
 )
 from horse_racing.physics import integrate, resolve_all_collisions, resolve_horse_collisions, resolve_wall_collisions
-from horse_racing.stamina import HorseRuntimeState, apply_exhaustion, update_stamina
+from horse_racing.stamina import (
+    HorseRuntimeState,
+    apply_exhaustion,
+    compute_burst_max,
+    update_stamina,
+)
 from horse_racing.track import compute_rail_bboxes, compute_segment_length, load_track
 from horse_racing.track_navigator import TrackNavigator
 from horse_racing.types import (
+    DRAFT_DISTANCE,
     HORSE_COUNT,
     HORSE_SPACING,
     MAX_REL_HORSES,
@@ -108,9 +114,12 @@ class HorseRacingEngine:
                 hs.genome = genomes[i]
             hs.base_attrs = express_genome(hs.genome)
             hs.effective_attrs = CoreAttributes(**hs.base_attrs.to_dict())
+            burst_max = compute_burst_max(hs.base_attrs)
             hs.runtime = HorseRuntimeState(
                 current_stamina=hs.base_attrs.stamina,
                 base_attributes=hs.base_attrs,
+                burst_pool=burst_max,
+                burst_max=burst_max,
             )
             self.horses.append(hs)
 
@@ -126,9 +135,12 @@ class HorseRacingEngine:
                 hs.genome = genomes[i]
             hs.base_attrs = express_genome(hs.genome)
             hs.effective_attrs = CoreAttributes(**hs.base_attrs.to_dict())
+            burst_max = compute_burst_max(hs.base_attrs)
             hs.runtime = HorseRuntimeState(
                 current_stamina=hs.base_attrs.stamina,
                 base_attributes=hs.base_attrs,
+                burst_pool=burst_max,
+                burst_max=burst_max,
             )
             hs.body = HorseBody()
             hs.navigator = TrackNavigator(self.segments)
@@ -203,6 +215,10 @@ class HorseRacingEngine:
         self._resolve_attributes()
 
         # 2. Update stamina (once per tick)
+        # First compute per-horse race-context flags (frontmost + drafting)
+        # so the redesigned stamina model can apply lead penalty / draft recovery.
+        self._update_race_context_flags()
+
         for i, hs in enumerate(self.horses):
             if hs.frame is None:
                 hs.frame = hs.navigator.update(hs.body.position)
@@ -221,10 +237,11 @@ class HorseRacingEngine:
                 normal_vel_val,
                 hs.frame.turn_radius,
             )
-            # Re-apply exhaustion after stamina update
+            # Re-apply exhaustion after stamina update — needs runtime for
+            # cliff collapse + burst-empty clamp.
             hs.effective_attrs = apply_exhaustion(
                 hs.effective_attrs,
-                hs.runtime.current_stamina,
+                hs.runtime,
                 hs.base_attrs.stamina,
             )
 
@@ -283,6 +300,46 @@ class HorseRacingEngine:
                 hs.body.velocity[:] = 0.0
                 self._finish_count += 1
                 self._finish_order[i] = self._finish_count
+
+    def _update_race_context_flags(self) -> None:
+        """Set is_frontmost and is_drafting on each horse's runtime state.
+
+        Frontmost = highest track_progress (ties broken by lower index, matching
+        cond_front_runner). Drafting = at least one horse with greater
+        track_progress is within DRAFT_DISTANCE meters.
+        """
+        n = len(self.horses)
+        if n == 0:
+            return
+
+        # Frontmost
+        front_idx = 0
+        front_prog = self.horses[0].track_progress
+        for i in range(1, n):
+            p = self.horses[i].track_progress
+            if p > front_prog:
+                front_prog = p
+                front_idx = i
+
+        # Drafting — quadratic but n is small (≤ 20)
+        d2 = DRAFT_DISTANCE * DRAFT_DISTANCE
+        for i, hs in enumerate(self.horses):
+            hs.runtime.is_frontmost = (i == front_idx)
+            drafting = False
+            my_pos = hs.body.position
+            my_prog = hs.track_progress
+            for j in range(n):
+                if j == i:
+                    continue
+                other = self.horses[j]
+                if other.track_progress <= my_prog:
+                    continue
+                dx = float(other.body.position[0] - my_pos[0])
+                dy = float(other.body.position[1] - my_pos[1])
+                if dx * dx + dy * dy < d2:
+                    drafting = True
+                    break
+            hs.runtime.is_drafting = drafting
 
     def _resolve_attributes(self) -> None:
         """Resolve modifiers and compute effective attributes for all horses."""

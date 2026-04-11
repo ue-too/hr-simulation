@@ -45,14 +45,56 @@ TRACK_HALF_WIDTH: float = HORSE_SPACING * MAX_HORSE_COUNT / 2 + HORSE_HALF_WIDTH
 
 RAIL_THICKNESS: float = 0.5  # 0.5 m rail (scaled down from 3.0 to match)
 
-# Stamina constants (no recovery — fixed pool, drain only)
-STAMINA_DRAIN_RATE: float = 0.01         # tangential push drain (reverted from 0.03)
-OVERDRIVE_DRAIN_RATE: float = 0.002      # quadratic: (speed - cruise)² × rate
-CORNERING_DRAIN_RATE: float = 0.002      # cornering beyond grip (was 0.02)
-SPEED_DRAIN_RATE: float = 0.0014         # distance tax (was 0.014)
-GRIP_FORCE_BASELINE: float = 150.0       # unchanged
-LATERAL_STEERING_DRAIN_RATE: float = 0.006   # lateral steering input
-LATERAL_VELOCITY_DRAIN_RATE: float = 0.0008  # sustained lateral drift
+# Stamina constants — physics redesign (validated in /tmp/hr-tests/probe_redesign.py)
+#
+# The aerobic pool is the main fuel; the burst pool is a small "kick reserve."
+# Mechanics layered together:
+#   A. Lead penalty: frontmost horse pays extra aerobic drain proportional to
+#      (speed - cruise), scaled non-linearly by stamina. Stayers get cubic relief.
+#   B. Draft recovery: horses within DRAFT_DISTANCE behind another horse AND
+#      at/near cruise recover aerobic at a rate scaled by drain_rate_mult.
+#   C. Burst pool: separate reserve sized as
+#      BURST_K × (max_speed - cruise_speed) × stamina/100. Drains on excess²,
+#      refills when speed < cruise - 0.5. Max_speed clamps to cruise + 0.5
+#      when empty (no kick available).
+#   D. Distance tax raised so cruising actually depletes without draft recovery.
+#   E. Cliff collapse: at ≤5% aerobic, cruise drops to 40% and max_speed drops
+#      to cruise + 0.5 in a single tick (no gradual lerp).
+#
+# The +8% drafting cruise modifier in modifiers.py is intentionally empty —
+# drafting now provides aerobic recovery, not raw speed.
+
+STAMINA_DRAIN_RATE: float = 0.01         # tangential push drain
+SPEED_DRAIN_RATE: float = 0.0042         # distance tax (3× the legacy 0.0014)
+CORNERING_DRAIN_RATE: float = 0.002      # cornering beyond grip
+GRIP_FORCE_BASELINE: float = 150.0
+LATERAL_STEERING_DRAIN_RATE: float = 0.006
+LATERAL_VELOCITY_DRAIN_RATE: float = 0.0008
+
+# A. Lead penalty
+LEAD_K: float = 0.025
+LEAD_STAMINA_REF: float = 100.0
+LEAD_STAMINA_EXP: float = 2.5
+
+# B. Draft recovery
+DRAFT_DISTANCE: float = 15.0
+DRAFT_RECOVERY_K: float = 0.04
+DRAFT_RECOVERY_CRUISE_BUFFER: float = 0.5
+
+# C. Burst pool
+BURST_K: float = 2.5
+BURST_DRAIN_K: float = 0.10
+BURST_RECOVERY_K: float = 0.015
+BURST_EMPTY_CLAMP: float = 0.5
+
+# E. Cliff collapse
+CLIFF_THRESHOLD: float = 0.05
+CLIFF_CRUISE_MULT: float = 0.40
+CLIFF_ACCEL_MULT: float = 0.20
+
+# Legacy constants no longer used by the redesign (kept for now in case other
+# modules import them; remove if no callers remain).
+OVERDRIVE_DRAIN_RATE: float = 0.0  # replaced by burst pool dynamics
 
 # ---------------------------------------------------------------------------
 # Track segment types

@@ -110,6 +110,10 @@ class HorseRacingSingleEnv(gym.Env):
                 hs.base_attrs.stamina *= stamina_scale
                 hs.effective_attrs.stamina *= stamina_scale
                 hs.runtime.current_stamina *= stamina_scale
+                # Burst pool scales with aerobic so the kick reserve stays
+                # proportional on longer tracks.
+                hs.runtime.burst_pool *= stamina_scale
+                hs.runtime.burst_max *= stamina_scale
 
         # Randomize starting lane: swap horse 0's position with a random horse
         if self.engine.horse_count > 1:

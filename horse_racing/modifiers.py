@@ -157,9 +157,11 @@ MODIFIER_IDS: list[str] = [
 MODIFIER_REGISTRY: dict[str, ModifierDefinition] = {
     "drafting": ModifierDefinition(
         id="drafting",
-        description="Aerodynamic benefit when behind another horse",
+        description="Aerodynamic benefit when behind another horse — under the "
+                    "physics redesign this gates aerobic recovery in stamina.py "
+                    "rather than directly boosting speed, so effects are empty.",
         condition=cond_drafting,
-        effects=[ModifierEffect(target="cruise_speed", pct=0.08)],  # 2-8% scaled by strength
+        effects=[],
     ),
     "pack_pressure": ModifierDefinition(
         id="pack_pressure",
