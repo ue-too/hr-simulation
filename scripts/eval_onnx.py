@@ -12,9 +12,12 @@ import argparse
 import sys
 from dataclasses import dataclass, field
 
+import random
+
 import numpy as np
 import onnxruntime as ort
 
+from horse_racing.bt_jockey import PERSONALITIES, make_bt_jockey
 from horse_racing.engine import EngineConfig, HorseRacingEngine
 from horse_racing.genome import random_genome
 from horse_racing.reward import compute_reward, ARCHETYPES
@@ -30,7 +33,6 @@ TRACKS = [
     ("Kokura (1415m)", "tracks/kokura.json"),
     ("Tokyo 2600 (1528m)", "tracks/tokyo_2600.json"),
     ("Hanshin (1008m)", "tracks/hanshin.json"),
-    ("Kyoto (917m)", "tracks/kyoto.json"),
 ]
 
 
@@ -47,6 +49,7 @@ class EpisodeStats:
     min_stamina: float = 1.0
     final_stamina: float = 1.0
     placement: int = 0
+    beat_bts: bool = False  # True if the policy finished ahead of all BT opponents
 
 
 @dataclass
@@ -80,115 +83,142 @@ def run_episode(
     track_path: str,
     horse_count: int,
     max_steps: int,
-    deterministic: bool = True,
-) -> list[EpisodeStats]:
-    """Run one episode with all horses controlled by the ONNX model."""
+    reward_phase: int = 1,
+    bt_opponents: bool = True,
+) -> EpisodeStats:
+    """Run one episode in training conditions.
+
+    Horse 0 is driven by the ONNX policy. When ``bt_opponents`` is True
+    (default, matching ``HorseRacingSingleEnv``), horses 1..N are driven
+    by randomly-chosen BT jockeys; otherwise they take zero actions.
+    Only horse 0's stats are returned — this mirrors the single-agent
+    training loop that produced ``history.json``.
+    """
     genomes = [random_genome() for _ in range(horse_count)]
     engine_config = EngineConfig(horse_count=horse_count)
     engine = HorseRacingEngine(track_path, engine_config, genomes=genomes)
 
-    stats = [EpisodeStats() for _ in range(horse_count)]
-    speeds: list[list[float]] = [[] for _ in range(horse_count)]
+    bt_jockeys: list = []
+    if bt_opponents and horse_count > 1:
+        personality_choices = list(PERSONALITIES.keys())
+        for _ in range(1, horse_count):
+            bt_jockeys.append(make_bt_jockey(random.choice(personality_choices)))
+
+    stats = EpisodeStats()
+    speeds: list[float] = []
     prev_obs = engine.get_observations()
-    done = [False] * horse_count
-    total_rewards = [0.0] * horse_count
+    prev_placement = engine.get_placements()[0]
+    done0 = False
+    total_reward = 0.0
 
     for step in range(max_steps):
-        # Build observation batch for all non-done horses
         all_obs = engine.get_observations()
-        obs_arrays = []
-        for i in range(horse_count):
-            obs_arrays.append(engine.obs_to_array(all_obs[i]))
 
-        obs_batch = np.stack(obs_arrays, axis=0).astype(np.float32)
-        raw_actions = session.run(None, {"obs": obs_batch})[0]
-        # Clip to action space: tangential [-10, 10], normal [-5, 5]
-        actions = np.clip(raw_actions, [-10.0, -5.0], [10.0, 5.0])
+        # Horse 0: ONNX policy. The exported ONNX model has the
+        # [-1,1] → physics remap baked into its graph (see the
+        # SB3PolicyWrapper in notebooks/train_phased.ipynb), so the
+        # raw output is already in tang [-3, +10], norm [-5, +5].
+        # We only clip for safety against edge-case numerical drift.
+        obs0 = engine.obs_to_array(all_obs[0]).astype(np.float32)
+        raw = session.run(None, {"obs": obs0[None, :]})[0][0]
+        tang = max(-10.0, min(10.0, float(raw[0])))
+        norm = max(-5.0, min(5.0, float(raw[1])))
 
-        # Build action list
-        action_list = []
-        for i in range(horse_count):
-            if done[i]:
-                action_list.append(HorseAction())
+        action_list: list[HorseAction] = []
+        if done0:
+            action_list.append(HorseAction())
+        else:
+            action_list.append(HorseAction(tang, norm))
+
+        # Horses 1..N: BT jockeys or zero actions
+        for j in range(1, horse_count):
+            if bt_jockeys:
+                action_list.append(bt_jockeys[j - 1].compute_action(all_obs[j]))
             else:
-                action_list.append(HorseAction(float(actions[i, 0]), float(actions[i, 1])))
+                action_list.append(HorseAction())
 
         engine.step(action_list)
 
         new_obs = engine.get_observations()
         placements = engine.get_placements()
-
         any_truncated = (step + 1) >= max_steps
 
-        for i in range(horse_count):
-            if done[i]:
-                continue
-
-            o = new_obs[i]
+        if not done0:
+            o = new_obs[0]
             speed = o["tangential_vel"]
-            speeds[i].append(speed)
+            speeds.append(speed)
 
-            if speed > stats[i].max_speed:
-                stats[i].max_speed = speed
-            if o["stamina_ratio"] < stats[i].min_stamina:
-                stats[i].min_stamina = o["stamina_ratio"]
+            if speed > stats.max_speed:
+                stats.max_speed = speed
+            if o["stamina_ratio"] < stats.min_stamina:
+                stats.min_stamina = o["stamina_ratio"]
             if o.get("collision", False):
-                stats[i].collisions += 1
+                stats.collisions += 1
 
-            # Compute reward
-            finish_order = placements[i] if o["finished"] else None
+            finish_order = placements[0] if o["finished"] else None
             r = compute_reward(
-                prev_obs[i], o, o["collision"],
-                placement=placements[i],
+                prev_obs[0], o, o["collision"],
+                placement=placements[0],
                 num_horses=horse_count,
                 finish_order=finish_order,
+                prev_placement=prev_placement,
+                reward_phase=reward_phase,
+                raw_tang_action=tang,
             )
-            total_rewards[i] += r
+            total_reward += r
+            prev_placement = placements[0]
 
             if o["finished"] or any_truncated:
-                stats[i].progress = o["track_progress"]
-                stats[i].final_speed = speed
-                stats[i].steps = step + 1
-                stats[i].finished = o.get("finished", False) or o["track_progress"] >= 0.99
-                stats[i].total_reward = total_rewards[i]
-                stats[i].avg_speed = sum(speeds[i]) / len(speeds[i]) if speeds[i] else 0
-                stats[i].final_stamina = o["stamina_ratio"]
-                stats[i].placement = placements[i]
-                done[i] = True
+                stats.progress = o["track_progress"]
+                stats.final_speed = speed
+                stats.steps = step + 1
+                stats.finished = bool(o.get("finished", False)) or o["track_progress"] >= 0.99
+                stats.total_reward = total_reward
+                stats.avg_speed = sum(speeds) / len(speeds) if speeds else 0
+                stats.final_stamina = o["stamina_ratio"]
+                stats.placement = placements[0]
+                # "Beat the BTs" = finished ahead of every BT opponent.
+                # When BTs are off this always trivially true if horse 0
+                # finished, so we only set it under competitive conditions.
+                if bt_opponents and stats.finished:
+                    stats.beat_bts = placements[0] == 1
+                done0 = True
 
         prev_obs = new_obs
 
-        if all(done):
+        if done0:
             break
 
     return stats
 
 
-def print_report(all_stats: list[TrackStats], model_name: str):
+def print_report(all_stats: list[TrackStats], model_name: str, bt_opponents: bool):
     print()
-    print(f"{'=' * 100}")
+    print(f"{'=' * 108}")
     print(f"  ONNX MODEL EVALUATION: {model_name}")
-    print(f"{'=' * 100}")
+    print(f"  Mode: {'horse 0 vs BTs (training conditions)' if bt_opponents else 'zero-opponent (solo)'}")
+    print(f"{'=' * 108}")
     print()
 
     header = (
-        f"{'Track':<25s} {'Complete':>8s} {'Progress':>12s} {'AvgSpeed':>10s} "
-        f"{'MaxSpeed':>10s} {'Reward':>12s} {'Steps':>10s} {'Stamina':>10s}"
+        f"{'Track':<25s} {'Complete':>8s} {'BeatBTs':>8s} {'Place':>6s} "
+        f"{'Progress':>12s} {'AvgSpeed':>10s} {'Reward':>12s} {'Steps':>10s} {'Stamina':>10s}"
     )
     print(header)
     print("-" * len(header))
 
     for ts in all_stats:
         comp = f"{ts.completion_rate():.0%}"
+        won = f"{ts.mean('beat_bts'):.0%}" if bt_opponents else "  -  "
+        place = f"{ts.mean('placement'):.1f}"
         prog = f"{ts.mean('progress'):.1%}±{ts.std('progress'):.1%}"
         avg_spd = f"{ts.mean('avg_speed'):.1f}±{ts.std('avg_speed'):.1f}"
-        max_spd = f"{ts.mean('max_speed'):.1f}±{ts.std('max_speed'):.1f}"
         rew = f"{ts.mean('total_reward'):.0f}±{ts.std('total_reward'):.0f}"
         steps = f"{ts.mean('steps'):.0f}±{ts.std('steps'):.0f}"
         stam = f"{ts.mean('final_stamina'):.0%}±{ts.std('final_stamina'):.0%}"
         print(
-            f"{ts.track_name:<25s} {comp:>8s} {prog:>12s} {avg_spd:>10s} "
-            f"{max_spd:>10s} {rew:>12s} {steps:>10s} {stam:>10s}"
+            f"{ts.track_name:<25s} {comp:>8s} {won:>8s} {place:>6s} "
+            f"{prog:>12s} {avg_spd:>10s} {rew:>12s} {steps:>10s} {stam:>10s}"
         )
 
     print()
@@ -203,6 +233,11 @@ def print_report(all_stats: list[TrackStats], model_name: str):
 
     print(f"  OVERALL ({len(all_episodes)} episodes across {len(all_stats)} tracks)")
     print(f"    Completion rate: {total_comp:.0%}")
+    if bt_opponents:
+        win_rate = sum(1 for e in all_episodes if e.beat_bts) / len(all_episodes) if all_episodes else 0
+        avg_place = sum(e.placement for e in all_episodes) / len(all_episodes) if all_episodes else 0
+        print(f"    Beat BTs:        {win_rate:.0%}")
+        print(f"    Avg placement:   {avg_place:.2f}")
     print(f"    Avg progress:    {avg_progress:.1%}")
     print(f"    Avg reward:      {avg_reward:.1f}")
     print(f"    Avg speed:       {avg_speed:.1f} m/s")
@@ -226,7 +261,19 @@ def main():
     parser.add_argument("--horses", type=int, default=4, help="Number of horses per race")
     parser.add_argument("--tracks", type=str, nargs="*", default=None,
                         help="Track files (default: all)")
+    parser.add_argument("--reward-phase", type=int, default=1, choices=[1, 2, 3],
+                        help="Reward phase used for scoring (default: 1, matches stage-1 training)")
+    parser.add_argument("--no-bt", action="store_true",
+                        help="Disable BT opponents (horses 1..N take zero actions). "
+                             "By default horse 0 races 3 BT jockeys, matching training.")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Seed for BT personality sampling and genome sampling")
     args = parser.parse_args()
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
+    bt_enabled = not args.no_bt
 
     # Load ONNX model
     session = ort.InferenceSession(args.model)
@@ -236,6 +283,7 @@ def main():
     print(f"  Input:  {input_info.name} {input_info.shape}")
     print(f"  Output: {output_info.name} {output_info.shape}")
     print(f"  Horses: {args.horses}, Episodes/track: {args.episodes}, Max steps: {args.max_steps}")
+    print(f"  Reward phase: {args.reward_phase}  BT opponents: {'on' if bt_enabled else 'off'}")
     print()
 
     tracks = TRACKS
@@ -250,21 +298,26 @@ def main():
         sys.stdout.flush()
 
         for ep in range(args.episodes):
-            ep_stats = run_episode(session, track_path, args.horses, args.max_steps)
-            # Use horse_0 as the primary agent for track-level stats
-            # but record all horses for richer statistics
-            for s in ep_stats:
-                ts.episodes.append(s)
+            s = run_episode(
+                session, track_path, args.horses, args.max_steps,
+                reward_phase=args.reward_phase, bt_opponents=bt_enabled,
+            )
+            ts.episodes.append(s)
 
-            # Show progress: check if horse_0 finished
-            primary = ep_stats[0]
-            sys.stdout.write("." if primary.finished else "x")
+            # Progress glyph: W = beat all BTs, . = finished, x = DNF
+            if bt_enabled and s.beat_bts:
+                glyph = "W"
+            elif s.finished:
+                glyph = "."
+            else:
+                glyph = "x"
+            sys.stdout.write(glyph)
             sys.stdout.flush()
 
         print(f" ({ts.completion_rate():.0%})")
         all_stats.append(ts)
 
-    print_report(all_stats, args.model)
+    print_report(all_stats, args.model, bt_enabled)
 
 
 if __name__ == "__main__":
