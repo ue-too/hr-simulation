@@ -60,7 +60,6 @@ TRACKS = [
     ("Kokura (1415m)", "tracks/kokura.json"),
     ("Tokyo 2600 (1528m)", "tracks/tokyo_2600.json"),
     ("Hanshin (1008m)", "tracks/hanshin.json"),
-    ("Kyoto (917m)", "tracks/kyoto.json"),
 ]
 
 

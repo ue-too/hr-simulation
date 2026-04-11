@@ -45,7 +45,6 @@ REAL_TRACKS = [
     ("Kokura", "tracks/kokura.json"),
     ("Tokyo 2600", "tracks/tokyo_2600.json"),
     ("Hanshin", "tracks/hanshin.json"),
-    ("Kyoto", "tracks/kyoto.json"),
     ("Niigata", "tracks/niigata.json"),
 ]
 
