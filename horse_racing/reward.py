@@ -1,9 +1,8 @@
-"""Reward function — delta-progress + finish bonus + step/exhaustion penalties."""
+"""Reward function — delta-progress + finish bonus + exhaustion penalty."""
 
 from __future__ import annotations
 
 _FINISH_BONUS = {1: 10.0, 2: 5.0, 3: 2.0}
-STEP_PENALTY = -0.0005
 EXHAUSTION_PENALTY = -0.002
 
 
@@ -22,7 +21,6 @@ def compute_reward(
         current_stamina: Horse's current stamina (0 = exhausted).
     """
     reward = curr_progress - prev_progress
-    reward += STEP_PENALTY
     if current_stamina <= 0:
         reward += EXHAUSTION_PENALTY
     if finish_order is not None:
