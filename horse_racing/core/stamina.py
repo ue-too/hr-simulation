@@ -6,8 +6,8 @@ from .attributes import CoreAttributes
 from .track_navigator import TrackFrame
 from .types import Horse, InputState
 
-OVERDRIVE_DRAIN_RATE = 0.08
-STAMINA_DRAIN_RATE = 0.065
+OVERDRIVE_DRAIN_RATE = 0.01
+STAMINA_DRAIN_RATE = 0.015
 LATERAL_STEERING_DRAIN_RATE = 0.006
 CORNERING_DRAIN_RATE = 0.002
 SPEED_DRAIN_RATE = 0.002

@@ -12,11 +12,11 @@ from ..core.race import Race
 from ..core.track import load_track_json
 from ..core.types import InputState
 
-# Reward weights — tuned so pushing fast beats cruising, exhaustion is punished
+# Reward weights — tuned so smart pacing beats cruise by ~+5
 PROGRESS_WEIGHT = 20.0
-COMPLETION_BONUS = 10.0
-SOLO_STEP_PENALTY = -0.005
-SOLO_EXHAUSTION_PENALTY = -0.01
+COMPLETION_BONUS = 50.0
+SOLO_STEP_PENALTY = -0.02
+SOLO_EXHAUSTION_PENALTY = -0.05
 
 
 class SoloTimeTrialEnv(gym.Env):
@@ -27,9 +27,9 @@ class SoloTimeTrialEnv(gym.Env):
     per-tick gradient toward faster movement.
 
     Expected episode rewards (default track):
-      Fast finish (~1500 ticks):  ~+22.5
-      Cruise (~2100 ticks):       ~+19.5
-      Push-hard-exhaust (~3500):  ~-12.5
+      Smart pacing (~1977 ticks):  ~+30.5
+      Cruise (~2219 ticks):        ~+25.6
+      Push-hard-exhaust (~2068):   ~+6.6
     """
 
     metadata = {"render_modes": []}
