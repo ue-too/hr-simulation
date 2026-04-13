@@ -37,6 +37,7 @@ class TestHorseRacingSingleEnv:
         assert isinstance(terminated, bool)
         assert isinstance(truncated, bool)
 
+    @pytest.mark.slow
     def test_terminates_when_agent_finishes(self):
         env = HorseRacingSingleEnv(track_path=OVAL_PATH, horse_count=2)
         env.reset()

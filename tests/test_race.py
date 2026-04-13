@@ -85,6 +85,7 @@ class TestRace:
         assert race.state.phase == "gate"
         assert race.state.tick == 0
 
+    @pytest.mark.slow
     def test_finish(self):
         race = Race(load_oval(), horse_count=2)
         race.start(None)

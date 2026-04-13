@@ -34,3 +34,4 @@ packages = ["horse_racing"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: marks tests that simulate full races (deselect with '-m \"not slow\"')"]
