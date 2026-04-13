@@ -1,1 +1,1 @@
-"""Core simulation engine: horse profiles, physics, tracks, and stamina."""
+"""v2 simulation core — mirrors TS ground truth."""
