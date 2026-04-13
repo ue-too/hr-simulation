@@ -77,9 +77,13 @@ class HorseRacingSingleEnv(gym.Env):
         for h in self._race.state.horses:
             if h.id != self._agent_id and not h.finished:
                 strategy = self._opponent_strategies[h.id]
-                opp_action = strategy.act(h.track_progress)
-                opp_tang, opp_norm = decode_action(opp_action)
-                inputs[h.id] = InputState(opp_tang, opp_norm)
+                continuous = strategy.act_continuous(h)
+                if continuous is not None:
+                    inputs[h.id] = continuous
+                else:
+                    opp_action = strategy.act(h.track_progress)
+                    opp_tang, opp_norm = decode_action(opp_action)
+                    inputs[h.id] = InputState(opp_tang, opp_norm)
 
         self._race.tick(inputs)
         self._step_count += 1

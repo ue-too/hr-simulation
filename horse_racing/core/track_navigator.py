@@ -136,6 +136,18 @@ class TrackNavigator:
             return self._curve_frame(seg, position)
         return self._straight_frame(seg)
 
+    def lateral_offset(self, position: np.ndarray) -> float:
+        """Signed lateral offset from track centerline (positive = normal dir)."""
+        seg = self.segment
+        if isinstance(seg, CurveSegment):
+            radial = position - seg.center
+            turn_radius = float(np.linalg.norm(radial))
+            return turn_radius - seg.radius
+        # Straight: project onto normal
+        frame = self._straight_frame(seg)
+        off = position - seg.start_point
+        return float(np.dot(off, frame.normal))
+
     def update_segment(self, position: np.ndarray) -> None:
         if len(self._segments) <= 1:
             return

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..core.types import Horse, InputState
 
 
 class Strategy(ABC):
@@ -11,6 +15,10 @@ class Strategy(ABC):
     def act(self, progress: float) -> int:
         """Return a discrete action index [0-24] based on current progress."""
         ...
+
+    def act_continuous(self, horse: Horse) -> InputState | None:
+        """Return continuous (tangential, normal) input, or None to use act()."""
+        return None
 
 
 class CruiseStrategy(Strategy):
@@ -72,6 +80,57 @@ class LateSprint80Strategy(SteadyThenSprintStrategy):
         super().__init__(switch_progress=0.8)
 
 
+class LaneHolderStrategy(Strategy):
+    """Combines a pacing strategy with lane-holding behavior.
+
+    Uses proportional control on lateral offset to hold a target lane
+    position. Creates a physical obstacle the agent must overtake.
+    """
+
+    _LANE_K = 0.15  # proportional gain for lane correction
+
+    def __init__(self, pacing: Strategy, target_offset: float):
+        self._pacing = pacing
+        self._target_offset = target_offset
+
+    def act(self, progress: float) -> int:
+        return self._pacing.act(progress)
+
+    def act_continuous(self, horse: Horse) -> InputState:
+        from ..action import decode_action
+        from ..core.types import InputState
+
+        tang_action = self._pacing.act(horse.track_progress)
+        tang, _ = decode_action(tang_action)
+
+        current_offset = horse.navigator.lateral_offset(horse.pos)
+        error = self._target_offset - current_offset
+        normal = max(-1.0, min(1.0, error * self._LANE_K))
+
+        return InputState(tang, normal)
+
+
+class InsideLaneStrategy(LaneHolderStrategy):
+    """Smart pacer holding inside lane (offset -5.0m)."""
+
+    def __init__(self):
+        super().__init__(EarlySprint50Strategy(), target_offset=-5.0)
+
+
+class OutsideLaneStrategy(LaneHolderStrategy):
+    """Smart pacer holding outside lane (offset +5.0m)."""
+
+    def __init__(self):
+        super().__init__(EarlySprint50Strategy(), target_offset=5.0)
+
+
+class CenterLaneStrategy(LaneHolderStrategy):
+    """Smart pacer holding center lane (offset 0.0m)."""
+
+    def __init__(self):
+        super().__init__(EarlySprint50Strategy(), target_offset=0.0)
+
+
 _STRATEGIES = [
     CruiseStrategy,
     PushEarlyStrategy,
@@ -80,6 +139,9 @@ _STRATEGIES = [
     SteadyPushStrategy,
     EarlySprint50Strategy,
     LateSprint80Strategy,
+    InsideLaneStrategy,
+    OutsideLaneStrategy,
+    CenterLaneStrategy,
 ]
 
 

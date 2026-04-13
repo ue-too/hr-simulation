@@ -1,7 +1,10 @@
 from horse_racing.opponents.scripted import (
+    CenterLaneStrategy,
     CruiseStrategy,
     EarlySprint50Strategy,
+    InsideLaneStrategy,
     LateSprint80Strategy,
+    OutsideLaneStrategy,
     PushEarlyStrategy,
     PushLateStrategy,
     random_strategy,
@@ -64,10 +67,27 @@ class TestLateSprint80Strategy:
         assert s.act(0.9) == 22
 
 
+class TestLaneHolderStrategies:
+    def test_inside_lane_act_returns_pacing_action(self):
+        s = InsideLaneStrategy()
+        assert s.act(0.0) == 17  # steady push from EarlySprint50
+        assert s.act(0.5) == 22  # sprint after 50%
+
+    def test_outside_lane_act_returns_pacing_action(self):
+        s = OutsideLaneStrategy()
+        assert s.act(0.0) == 17
+        assert s.act(0.5) == 22
+
+    def test_center_lane_act_returns_pacing_action(self):
+        s = CenterLaneStrategy()
+        assert s.act(0.0) == 17
+        assert s.act(0.5) == 22
+
+
 class TestRandomStrategy:
-    def test_returns_one_of_seven_strategies(self):
+    def test_returns_one_of_ten_strategies(self):
         strategies = set()
-        for _ in range(500):
+        for _ in range(1000):
             s = random_strategy()
             strategies.add(type(s).__name__)
         assert strategies == {
@@ -78,4 +98,7 @@ class TestRandomStrategy:
             "SteadyPushStrategy",
             "EarlySprint50Strategy",
             "LateSprint80Strategy",
+            "InsideLaneStrategy",
+            "OutsideLaneStrategy",
+            "CenterLaneStrategy",
         }
