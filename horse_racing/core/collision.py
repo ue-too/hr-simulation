@@ -73,17 +73,31 @@ def sat_overlap(a: OBB, b: OBB) -> tuple[float, np.ndarray] | None:
 
 
 def _segment_vs_obb(
-    p1: np.ndarray, p2: np.ndarray, obb: OBB
+    rail_obb: OBB, horse_obb: OBB
 ) -> tuple[float, np.ndarray] | None:
-    """Test a line segment against an OBB."""
-    d = p2 - p1
-    length = float(np.linalg.norm(d))
-    if length < 1e-9:
-        return None
-    mid = (p1 + p2) / 2
-    angle = math.atan2(d[1], d[0])
-    seg_obb = OBB(mid, length / 2, 0.01, angle)
-    return sat_overlap(seg_obb, obb)
+    """Test a precomputed rail OBB against a horse OBB."""
+    return sat_overlap(rail_obb, horse_obb)
+
+
+def _aabb_overlap(
+    cx_a: float, cy_a: float, r_a: float,
+    cx_b: float, cy_b: float, r_b: float,
+) -> bool:
+    """Fast circle-based broad-phase check."""
+    dx = cx_a - cx_b
+    dy = cy_a - cy_b
+    total_r = r_a + r_b
+    return dx * dx + dy * dy <= total_r * total_r
+
+
+@dataclass
+class RailBody:
+    """Precomputed rail segment OBB + bounding circle for broad-phase."""
+    obb: OBB
+    cx: float  # center x
+    cy: float  # center y
+    radius: float  # bounding circle radius
+    track_seg_index: int  # which track segment this rail belongs to
 
 
 @dataclass
@@ -94,18 +108,29 @@ class HorseBody:
     mass: float
 
 
+# Bounding circle radius for a horse OBB
+_HORSE_BOUND_RADIUS = math.sqrt(HORSE_HALF_LENGTH**2 + HORSE_HALF_WIDTH**2)
+
+# How many track segments ahead/behind to check for rail collisions
+_RAIL_SEARCH_WINDOW = 2
+
+
 class CollisionWorld:
     """Manages horse bodies and rail segments for collision detection."""
 
     def __init__(self, segments: list[TrackSegment], half_track_width: float):
         self._horses: dict[int, HorseBody] = {}
-        self._rail_segments: list[tuple[np.ndarray, np.ndarray]] = []
+        self._rail_bodies: list[RailBody] = []
+        self._rails_by_seg: dict[int, list[int]] = {}  # seg_index -> [rail_body indices]
+        self._num_track_segments = len(segments)
         self._build_rails(segments, half_track_width)
 
     def _build_rails(
         self, segments: list[TrackSegment], half_track_width: float
     ) -> None:
-        for seg in segments:
+        for seg_idx, seg in enumerate(segments):
+            seg_rails: list[int] = []
+
             if isinstance(seg, StraightSegment):
                 d = seg.end_point - seg.start_point
                 length = np.linalg.norm(d)
@@ -113,14 +138,20 @@ class CollisionWorld:
                     continue
                 fwd = d / length
                 n = np.array([-fwd[1], fwd[0]])
-                self._rail_segments.append((
-                    seg.start_point + n * half_track_width,
-                    seg.end_point + n * half_track_width,
-                ))
-                self._rail_segments.append((
-                    seg.start_point - n * half_track_width,
-                    seg.end_point - n * half_track_width,
-                ))
+                angle = math.atan2(fwd[1], fwd[0])
+
+                for sign in [1.0, -1.0]:
+                    p1 = seg.start_point + n * (sign * half_track_width)
+                    p2 = seg.end_point + n * (sign * half_track_width)
+                    mid = (p1 + p2) / 2
+                    obb = OBB(mid, length / 2, 0.01, angle)
+                    r = math.sqrt((length / 2) ** 2 + 0.01**2)
+                    idx = len(self._rail_bodies)
+                    self._rail_bodies.append(RailBody(
+                        obb=obb, cx=float(mid[0]), cy=float(mid[1]),
+                        radius=r, track_seg_index=seg_idx,
+                    ))
+                    seg_rails.append(idx)
             else:
                 arc_steps = max(4, int(abs(seg.angle_span) / (5 * math.pi / 180)))
                 to_start = seg.start_point - seg.center
@@ -137,7 +168,33 @@ class CollisionWorld:
                         a1 = start_angle + seg.angle_span * t1
                         p0 = seg.center + np.array([math.cos(a0), math.sin(a0)]) * r
                         p1 = seg.center + np.array([math.cos(a1), math.sin(a1)]) * r
-                        self._rail_segments.append((p0, p1))
+                        d = p1 - p0
+                        seg_len = float(np.linalg.norm(d))
+                        if seg_len < 1e-9:
+                            continue
+                        mid = (p0 + p1) / 2
+                        angle = math.atan2(d[1], d[0])
+                        obb = OBB(mid, seg_len / 2, 0.01, angle)
+                        bound_r = math.sqrt((seg_len / 2) ** 2 + 0.01**2)
+                        idx = len(self._rail_bodies)
+                        self._rail_bodies.append(RailBody(
+                            obb=obb, cx=float(mid[0]), cy=float(mid[1]),
+                            radius=bound_r, track_seg_index=seg_idx,
+                        ))
+                        seg_rails.append(idx)
+
+            self._rails_by_seg[seg_idx] = seg_rails
+
+    def _nearby_rail_indices(self, seg_index: int) -> list[int]:
+        """Get rail body indices near a given track segment index."""
+        indices: list[int] = []
+        n = self._num_track_segments
+        for offset in range(-_RAIL_SEARCH_WINDOW, _RAIL_SEARCH_WINDOW + 1):
+            # Wrap around for closed tracks
+            idx = (seg_index + offset) % n
+            if idx in self._rails_by_seg:
+                indices.extend(self._rails_by_seg[idx])
+        return indices
 
     def add_horse(
         self, horse_id: int, pos: np.ndarray, frame: TrackFrame, mass: float,
@@ -150,6 +207,7 @@ class CollisionWorld:
 
     def set_horse_state(
         self, horse_id: int, pos: np.ndarray, vel: np.ndarray, frame: TrackFrame,
+        seg_index: int = 0,
     ) -> None:
         body = self._horses[horse_id]
         body.obb.center = pos.copy()
@@ -160,7 +218,7 @@ class CollisionWorld:
         body = self._horses[horse_id]
         return body.obb.center.copy(), body.velocity.copy()
 
-    def step(self, dt: float) -> None:
+    def step(self, dt: float, horse_seg_indices: dict[int, int] | None = None) -> None:
         horse_ids = list(self._horses.keys())
 
         # Horse-horse collisions
@@ -168,16 +226,35 @@ class CollisionWorld:
             for j in range(i + 1, len(horse_ids)):
                 a = self._horses[horse_ids[i]]
                 b = self._horses[horse_ids[j]]
+                # Quick distance check
+                if not _aabb_overlap(
+                    float(a.obb.center[0]), float(a.obb.center[1]), _HORSE_BOUND_RADIUS,
+                    float(b.obb.center[0]), float(b.obb.center[1]), _HORSE_BOUND_RADIUS,
+                ):
+                    continue
                 result = sat_overlap(a.obb, b.obb)
                 if result is not None:
                     depth, normal = result
                     self._resolve_dynamic(a, b, depth, normal)
 
-        # Horse-rail collisions
+        # Horse-rail collisions — only check nearby segments
         for hid in horse_ids:
             body = self._horses[hid]
-            for p1, p2 in self._rail_segments:
-                result = _segment_vs_obb(p1, p2, body.obb)
+            hx = float(body.obb.center[0])
+            hy = float(body.obb.center[1])
+
+            if horse_seg_indices is not None and hid in horse_seg_indices:
+                rail_indices = self._nearby_rail_indices(horse_seg_indices[hid])
+            else:
+                rail_indices = range(len(self._rail_bodies))
+
+            for ri in rail_indices:
+                rail = self._rail_bodies[ri]
+                # Broad-phase: bounding circle check
+                if not _aabb_overlap(hx, hy, _HORSE_BOUND_RADIUS,
+                                     rail.cx, rail.cy, rail.radius):
+                    continue
+                result = sat_overlap(rail.obb, body.obb)
                 if result is not None:
                     depth, normal = result
                     self._resolve_static(body, depth, normal)

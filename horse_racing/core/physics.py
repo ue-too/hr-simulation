@@ -122,7 +122,11 @@ def step_physics(
 
         # Collision resolve
         if collision_world is not None:
-            collision_world.step(dt)
+            seg_indices = {
+                h.id: h.navigator.segment_index
+                for h in horses if not h.finished
+            }
+            collision_world.step(dt, horse_seg_indices=seg_indices)
 
         # Sync back
         for h in horses:
