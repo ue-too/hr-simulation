@@ -89,7 +89,8 @@ class HorseRacingSingleEnv(gym.Env):
 
         # Compute reward
         reward = compute_reward(
-            self._prev_progress, curr_progress, agent_horse.finish_order
+            self._prev_progress, curr_progress, agent_horse.finish_order,
+            agent_horse.current_stamina,
         )
         self._prev_progress = curr_progress
 

@@ -43,3 +43,19 @@ def test_no_bonus_for_fourth():
         prev_progress=0.99, curr_progress=1.0, finish_order=4
     )
     assert reward == pytest.approx(0.01)
+
+
+def test_exhaustion_penalty_when_stamina_zero():
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        current_stamina=0.0,
+    )
+    assert reward == pytest.approx(0.01 + (-0.001))
+
+
+def test_no_penalty_when_stamina_positive():
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        current_stamina=50.0,
+    )
+    assert reward == pytest.approx(0.01)
