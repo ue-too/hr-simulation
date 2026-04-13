@@ -48,12 +48,38 @@ class SteadyPushStrategy(Strategy):
         return 17  # (0.5, 0)
 
 
+class SteadyThenSprintStrategy(Strategy):
+    """Push +0.5 then sprint +1.0 in the final stretch. ~1935-1983 ticks."""
+
+    def __init__(self, switch_progress: float = 0.6):
+        self._switch = switch_progress
+
+    def act(self, progress: float) -> int:
+        return 22 if progress >= self._switch else 17  # (1.0, 0) or (0.5, 0)
+
+
+class EarlySprint50Strategy(SteadyThenSprintStrategy):
+    """Steady then sprint at 50% — aggressive, finishes ~1935 ticks."""
+
+    def __init__(self):
+        super().__init__(switch_progress=0.5)
+
+
+class LateSprint80Strategy(SteadyThenSprintStrategy):
+    """Steady then sprint at 80% — conservative, finishes ~1983 ticks."""
+
+    def __init__(self):
+        super().__init__(switch_progress=0.8)
+
+
 _STRATEGIES = [
     CruiseStrategy,
     PushEarlyStrategy,
     PushLateStrategy,
     FullPushStrategy,
     SteadyPushStrategy,
+    EarlySprint50Strategy,
+    LateSprint80Strategy,
 ]
 
 

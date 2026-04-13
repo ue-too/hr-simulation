@@ -1,5 +1,7 @@
 from horse_racing.opponents.scripted import (
     CruiseStrategy,
+    EarlySprint50Strategy,
+    LateSprint80Strategy,
     PushEarlyStrategy,
     PushLateStrategy,
     random_strategy,
@@ -38,10 +40,34 @@ class TestPushLateStrategy:
         assert s.act(0.9) == 22
 
 
+class TestEarlySprint50Strategy:
+    def test_pushes_half_before_50(self):
+        s = EarlySprint50Strategy()
+        assert s.act(0.0) == 17  # (0.5, 0)
+        assert s.act(0.49) == 17
+
+    def test_sprints_after_50(self):
+        s = EarlySprint50Strategy()
+        assert s.act(0.5) == 22  # (1.0, 0)
+        assert s.act(0.9) == 22
+
+
+class TestLateSprint80Strategy:
+    def test_pushes_half_before_80(self):
+        s = LateSprint80Strategy()
+        assert s.act(0.0) == 17  # (0.5, 0)
+        assert s.act(0.79) == 17
+
+    def test_sprints_after_80(self):
+        s = LateSprint80Strategy()
+        assert s.act(0.8) == 22  # (1.0, 0)
+        assert s.act(0.9) == 22
+
+
 class TestRandomStrategy:
-    def test_returns_one_of_five_strategies(self):
+    def test_returns_one_of_seven_strategies(self):
         strategies = set()
-        for _ in range(200):
+        for _ in range(500):
             s = random_strategy()
             strategies.add(type(s).__name__)
         assert strategies == {
@@ -50,4 +76,6 @@ class TestRandomStrategy:
             "PushLateStrategy",
             "FullPushStrategy",
             "SteadyPushStrategy",
+            "EarlySprint50Strategy",
+            "LateSprint80Strategy",
         }
