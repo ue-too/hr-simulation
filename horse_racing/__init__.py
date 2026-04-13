@@ -1,6 +1,13 @@
 """Horse racing RL training environment (v2)."""
 
-from .action import ACTION_LEVELS, LEVELS_PER_AXIS, NUM_ACTIONS, decode_action
+from .action import (
+    NORMAL_LEVELS,
+    NUM_ACTIONS,
+    NUM_NORMAL,
+    NUM_TANGENTIAL,
+    TANGENTIAL_LEVELS,
+    decode_action,
+)
 from .core.observation import OBS_SIZE
 from .core.race import Race
 from .core.track import load_track_json

@@ -32,28 +32,28 @@ class PushEarlyStrategy(Strategy):
     """Push hard for the first 30%, then cruise."""
 
     def act(self, progress: float) -> int:
-        return 22 if progress < 0.3 else 12  # (1, 0) or (0, 0)
+        return 32 if progress < 0.3 else 12  # (1, 0) or (0, 0)
 
 
 class PushLateStrategy(Strategy):
     """Cruise until 70%, then push hard."""
 
     def act(self, progress: float) -> int:
-        return 22 if progress >= 0.7 else 12  # (1, 0) or (0, 0)
+        return 32 if progress >= 0.7 else 12  # (1, 0) or (0, 0)
 
 
 class FullPushStrategy(Strategy):
     """Push +1.0 the entire race — fast but exhausts mid-race."""
 
     def act(self, progress: float) -> int:
-        return 22  # (1, 0)
+        return 32  # (1, 0)
 
 
 class SteadyPushStrategy(Strategy):
     """Push +0.5 the entire race — faster than cruise, moderate drain."""
 
     def act(self, progress: float) -> int:
-        return 17  # (0.5, 0)
+        return 22  # (0.5, 0)
 
 
 class SteadyThenSprintStrategy(Strategy):
@@ -63,7 +63,7 @@ class SteadyThenSprintStrategy(Strategy):
         self._switch = switch_progress
 
     def act(self, progress: float) -> int:
-        return 22 if progress >= self._switch else 17  # (1.0, 0) or (0.5, 0)
+        return 32 if progress >= self._switch else 22  # (1.0, 0) or (0.5, 0)
 
 
 class EarlySprint50Strategy(SteadyThenSprintStrategy):

@@ -48,7 +48,7 @@ def test_pushing_makes_more_progress_than_cruise(env):
     """Pushing (+1.0) should yield more progress than cruising (0.0) over same ticks."""
     env.reset(seed=42)
     for _ in range(50):
-        env.step(22)  # tangential +1.0
+        env.step(32)  # tangential +1.0
     push_progress = env._race.state.horses[0].track_progress
 
     env.reset(seed=42)

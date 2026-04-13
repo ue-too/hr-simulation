@@ -43,7 +43,7 @@ class TestHorseRacingSingleEnv:
         env.reset()
         terminated = False
         for _ in range(5000):
-            _, _, terminated, truncated, _ = env.step(22)  # push hard
+            _, _, terminated, truncated, _ = env.step(32)  # push hard
             if terminated or truncated:
                 break
         assert terminated or truncated
