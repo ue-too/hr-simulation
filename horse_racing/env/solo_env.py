@@ -13,23 +13,24 @@ from ..core.track import load_track_json
 from ..core.types import InputState
 
 # Reward weights — tuned so smart pacing beats cruise by ~+5
-PROGRESS_WEIGHT = 20.0
-COMPLETION_BONUS = 50.0
-SOLO_STEP_PENALTY = -0.02
+PROGRESS_WEIGHT = 10.0
+PAR_TICKS = 2200          # ~cruise finish time; finishing faster earns a bonus
+TIME_BONUS_MAX = 50.0     # bonus at tick 0; linearly decays to 0 at PAR_TICKS
 SOLO_EXHAUSTION_PENALTY = -0.05
 
 
 class SoloTimeTrialEnv(gym.Env):
     """Solo time-trial: one horse, no opponents, learn to pace.
 
-    Reward heavily penalises each tick (incentivise speed) and exhaustion
-    (incentivise stamina management).  Scaled delta-progress gives a
-    per-tick gradient toward faster movement.
+    Reward = scaled delta-progress (dense signal) + time bonus at finish
+    (faster = bigger bonus) + exhaustion penalty (stamina=0 is punished).
+
+    No per-tick step penalty — only the time bonus at finish rewards speed.
 
     Expected episode rewards (default track):
-      Smart pacing (~1977 ticks):  ~+30.5
-      Cruise (~2219 ticks):        ~+25.6
-      Push-hard-exhaust (~2068):   ~+6.6
+      Smart pacing (~1977 ticks):  ~+15.1  (progress 10.0 + bonus 5.1)
+      Cruise (~2219 ticks):        ~+10.0  (progress 10.0 + bonus 0.0)
+      Push-hard-exhaust (~2068):   ~ -9.1  (progress 10.0 + bonus 3.0 - exhaust)
     """
 
     metadata = {"render_modes": []}
@@ -76,14 +77,13 @@ class SoloTimeTrialEnv(gym.Env):
         horse = self._race.state.horses[0]
         curr_progress = horse.track_progress
 
-        # Reward: scaled progress + step penalty + exhaustion penalty + completion bonus
+        # Reward: scaled progress + exhaustion penalty + time bonus at finish
         delta = curr_progress - self._prev_progress
         reward = delta * PROGRESS_WEIGHT
-        reward += SOLO_STEP_PENALTY
         if horse.current_stamina <= 0:
             reward += SOLO_EXHAUSTION_PENALTY
         if horse.finished:
-            reward += COMPLETION_BONUS
+            reward += TIME_BONUS_MAX * max(0.0, 1.0 - self._step_count / PAR_TICKS)
         self._prev_progress = curr_progress
 
         terminated = horse.finished

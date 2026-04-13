@@ -5,10 +5,8 @@ from __future__ import annotations
 import pytest
 
 from horse_racing.env.solo_env import (
-    COMPLETION_BONUS,
     PROGRESS_WEIGHT,
     SOLO_EXHAUSTION_PENALTY,
-    SOLO_STEP_PENALTY,
     SoloTimeTrialEnv,
 )
 
@@ -61,14 +59,15 @@ def test_pushing_makes_more_progress_than_cruise(env):
     assert push_progress > cruise_progress
 
 
-def test_step_penalty_every_tick(env):
-    """Even zero-progress ticks should include step penalty."""
+def test_reward_positive_when_making_progress(env):
+    """Reward should be positive when making progress (no step penalty anymore)."""
     env.reset()
-    # First tick from standstill — progress is near zero
+    # Run a few ticks to build up speed
+    for _ in range(5):
+        env.step(12)
     _, reward, _, _, _ = env.step(12)
-    # Reward should be close to SOLO_STEP_PENALTY (progress is tiny)
-    assert reward < 0.01  # bounded above by small progress
-    assert reward > SOLO_STEP_PENALTY - 0.01  # bounded below
+    # At cruise speed, reward = delta_progress * 10.0 > 0
+    assert reward > 0.0
 
 
 def test_truncates_at_max_steps(env):
