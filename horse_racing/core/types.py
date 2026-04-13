@@ -1,5 +1,7 @@
 """Simulation types and physics constants — mirrors TS types.ts."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 import numpy as np

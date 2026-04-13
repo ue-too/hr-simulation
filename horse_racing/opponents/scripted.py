@@ -34,7 +34,27 @@ class PushLateStrategy(Strategy):
         return 22 if progress >= 0.7 else 12  # (1, 0) or (0, 0)
 
 
-_STRATEGIES = [CruiseStrategy, PushEarlyStrategy, PushLateStrategy]
+class FullPushStrategy(Strategy):
+    """Push +1.0 the entire race — fast but exhausts mid-race."""
+
+    def act(self, progress: float) -> int:
+        return 22  # (1, 0)
+
+
+class SteadyPushStrategy(Strategy):
+    """Push +0.5 the entire race — faster than cruise, moderate drain."""
+
+    def act(self, progress: float) -> int:
+        return 17  # (0.5, 0)
+
+
+_STRATEGIES = [
+    CruiseStrategy,
+    PushEarlyStrategy,
+    PushLateStrategy,
+    FullPushStrategy,
+    SteadyPushStrategy,
+]
 
 
 def random_strategy() -> Strategy:

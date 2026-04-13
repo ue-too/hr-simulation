@@ -39,9 +39,15 @@ class TestPushLateStrategy:
 
 
 class TestRandomStrategy:
-    def test_returns_one_of_three_strategies(self):
+    def test_returns_one_of_five_strategies(self):
         strategies = set()
-        for _ in range(100):
+        for _ in range(200):
             s = random_strategy()
             strategies.add(type(s).__name__)
-        assert strategies == {"CruiseStrategy", "PushEarlyStrategy", "PushLateStrategy"}
+        assert strategies == {
+            "CruiseStrategy",
+            "PushEarlyStrategy",
+            "PushLateStrategy",
+            "FullPushStrategy",
+            "SteadyPushStrategy",
+        }
