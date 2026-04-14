@@ -1,6 +1,6 @@
 import pytest
 
-from horse_racing.reward import OVERTAKE_BONUS, RAIL_COLLISION_PENALTY, STAMINA_EFFICIENCY_BONUS, compute_reward
+from horse_racing.reward import FINISHING_SPEED_BONUS, OVERTAKE_BONUS, RAIL_COLLISION_PENALTY, compute_reward
 
 
 def test_positive_progress():
@@ -20,74 +20,79 @@ def test_no_progress():
 def test_first_place_bonus():
     reward = compute_reward(
         prev_progress=0.99, curr_progress=1.0, finish_order=1,
-        current_stamina=0.0, max_stamina=100.0,
+        finishing_speed=9.0, cruise_speed=13.0,
     )
-    # progress + placement + efficiency (used all stamina)
-    assert reward == pytest.approx(0.01 + 10.0 + STAMINA_EFFICIENCY_BONUS)
+    # progress + placement + speed bonus
+    expected = 0.01 + 10.0 + FINISHING_SPEED_BONUS * (9.0 / 13.0)
+    assert reward == pytest.approx(expected)
 
 
 def test_second_place_bonus():
     reward = compute_reward(
         prev_progress=0.99, curr_progress=1.0, finish_order=2,
-        current_stamina=0.0, max_stamina=100.0,
+        finishing_speed=9.0, cruise_speed=13.0,
     )
-    assert reward == pytest.approx(0.01 + 5.0 + STAMINA_EFFICIENCY_BONUS)
+    expected = 0.01 + 5.0 + FINISHING_SPEED_BONUS * (9.0 / 13.0)
+    assert reward == pytest.approx(expected)
 
 
 def test_third_place_bonus():
     reward = compute_reward(
         prev_progress=0.99, curr_progress=1.0, finish_order=3,
-        current_stamina=0.0, max_stamina=100.0,
+        finishing_speed=9.0, cruise_speed=13.0,
     )
-    assert reward == pytest.approx(0.01 + 2.0 + STAMINA_EFFICIENCY_BONUS)
+    expected = 0.01 + 2.0 + FINISHING_SPEED_BONUS * (9.0 / 13.0)
+    assert reward == pytest.approx(expected)
 
 
 def test_no_bonus_for_fourth():
     reward = compute_reward(
         prev_progress=0.99, curr_progress=1.0, finish_order=4,
-        current_stamina=0.0, max_stamina=100.0,
+        finishing_speed=9.0, cruise_speed=13.0,
     )
-    assert reward == pytest.approx(0.01 + STAMINA_EFFICIENCY_BONUS)
-
-
-def test_efficiency_bonus_scales_with_stamina_used():
-    # Finish with 50% stamina = half the efficiency bonus
-    reward = compute_reward(
-        prev_progress=0.99, curr_progress=1.0, finish_order=1,
-        current_stamina=50.0, max_stamina=100.0,
-    )
-    expected = 0.01 + 10.0 + STAMINA_EFFICIENCY_BONUS * 0.5
+    expected = 0.01 + FINISHING_SPEED_BONUS * (9.0 / 13.0)
     assert reward == pytest.approx(expected)
 
 
-def test_efficiency_bonus_zero_when_full_stamina():
+def test_speed_bonus_higher_when_faster():
+    """A horse finishing at 10 m/s gets more bonus than one at 6.6 m/s."""
+    fast = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        finishing_speed=10.0, cruise_speed=13.0,
+    )
+    slow = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        finishing_speed=6.6, cruise_speed=13.0,
+    )
+    assert fast > slow
+
+
+def test_speed_bonus_zero_when_stopped():
     reward = compute_reward(
         prev_progress=0.99, curr_progress=1.0, finish_order=1,
-        current_stamina=100.0, max_stamina=100.0,
+        finishing_speed=0.0, cruise_speed=13.0,
     )
     assert reward == pytest.approx(0.01 + 10.0)
 
 
-def test_no_efficiency_bonus_mid_race():
-    """Efficiency bonus only triggers at finish (finish_order is not None)."""
+def test_no_speed_bonus_mid_race():
+    """Speed bonus only triggers at finish."""
     reward = compute_reward(
         prev_progress=0.5, curr_progress=0.51, finish_order=None,
-        current_stamina=10.0, max_stamina=100.0,
+        finishing_speed=14.0, cruise_speed=13.0,
     )
     assert reward == pytest.approx(0.01)
 
 
 def test_no_exhaustion_penalty():
-    """Old exhaustion penalty is removed — zero stamina mid-race has no direct penalty."""
+    """Zero stamina mid-race has no direct penalty."""
     reward = compute_reward(
         prev_progress=0.5, curr_progress=0.51, finish_order=None,
-        current_stamina=0.0, max_stamina=100.0,
     )
     assert reward == pytest.approx(0.01)
 
 
 def test_overtake_bonus():
-    """Passing opponents gives a small bonus."""
     reward = compute_reward(
         prev_progress=0.5, curr_progress=0.51, finish_order=None,
         overtakes=2,
@@ -104,13 +109,12 @@ def test_no_overtake_bonus_when_zero():
 
 
 def test_overtake_bonus_at_finish():
-    """Overtake bonus stacks with finish bonus."""
     reward = compute_reward(
         prev_progress=0.99, curr_progress=1.0, finish_order=1,
-        current_stamina=0.0, max_stamina=100.0,
+        finishing_speed=9.0, cruise_speed=13.0,
         overtakes=1,
     )
-    expected = 0.01 + OVERTAKE_BONUS + 10.0 + STAMINA_EFFICIENCY_BONUS
+    expected = 0.01 + OVERTAKE_BONUS + 10.0 + FINISHING_SPEED_BONUS * (9.0 / 13.0)
     assert reward == pytest.approx(expected)
 
 

@@ -116,8 +116,8 @@ class HorseRacingSingleEnv(gym.Env):
         rail_contact = self._race.had_rail_contact(self._agent_id)
         reward = compute_reward(
             self._prev_progress, curr_progress, agent_horse.finish_order,
-            agent_horse.current_stamina,
-            agent_horse.base_attributes.max_stamina,
+            finishing_speed=agent_horse.tangential_vel,
+            cruise_speed=agent_horse.base_attributes.cruise_speed,
             overtakes=overtakes,
             rail_contact=rail_contact,
         )

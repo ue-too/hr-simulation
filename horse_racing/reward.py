@@ -1,9 +1,9 @@
-"""Reward function — delta-progress + finish bonus + stamina efficiency + overtake + collision."""
+"""Reward function — delta-progress + finish bonus + finishing speed + overtake + collision."""
 
 from __future__ import annotations
 
 _FINISH_BONUS = {1: 10.0, 2: 5.0, 3: 2.0}
-STAMINA_EFFICIENCY_BONUS = 3.0
+FINISHING_SPEED_BONUS = 0.3
 OVERTAKE_BONUS = 0.1
 RAIL_COLLISION_PENALTY = 0.002
 
@@ -12,8 +12,8 @@ def compute_reward(
     prev_progress: float,
     curr_progress: float,
     finish_order: int | None,
-    current_stamina: float = 1.0,
-    max_stamina: float = 100.0,
+    finishing_speed: float = 0.0,
+    cruise_speed: float = 13.0,
     overtakes: int = 0,
     rail_contact: bool = False,
 ) -> float:
@@ -23,8 +23,8 @@ def compute_reward(
         prev_progress: Track progress at previous tick [0, 1].
         curr_progress: Track progress at current tick [0, 1].
         finish_order: Finishing position (1-based) if horse finished, else None.
-        current_stamina: Horse's current stamina.
-        max_stamina: Horse's maximum stamina.
+        finishing_speed: Horse's tangential velocity when crossing the finish.
+        cruise_speed: Horse's base cruise speed (for normalization).
         overtakes: Number of opponents overtaken this step (positive = passed them).
         rail_contact: Whether the horse touched a rail this tick.
     """
@@ -34,6 +34,8 @@ def compute_reward(
         reward -= RAIL_COLLISION_PENALTY
     if finish_order is not None:
         reward += _FINISH_BONUS.get(finish_order, 0.0)
-        stamina_pct = current_stamina / max_stamina if max_stamina > 0 else 0.0
-        reward += STAMINA_EFFICIENCY_BONUS * (1.0 - stamina_pct)
+        # Reward finishing fast — paced horses cross at ~0.7× cruise,
+        # depleted horses crawl at ~0.5× cruise. Normalized to [0, ~3.0].
+        speed_ratio = finishing_speed / cruise_speed if cruise_speed > 0 else 0.0
+        reward += FINISHING_SPEED_BONUS * speed_ratio
     return reward
