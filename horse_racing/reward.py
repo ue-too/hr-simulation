@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 _FINISH_BONUS = {1: 10.0, 2: 5.0, 3: 2.0}
-STAMINA_EFFICIENCY_BONUS = 1.0
+STAMINA_EFFICIENCY_BONUS = 3.0
 
 
 def compute_reward(

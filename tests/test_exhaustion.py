@@ -34,16 +34,16 @@ class TestEffectiveRatio:
             assert values[i] >= values[i - 1]
 
     def test_knee_region_has_steep_drop(self):
-        """Between 40% and 20% stamina, ratio should drop significantly."""
-        high = effective_ratio(0.4)
-        low = effective_ratio(0.2)
-        assert high - low > 0.15
+        """Between 30% and 10% stamina, ratio should drop significantly."""
+        high = effective_ratio(0.3)
+        low = effective_ratio(0.1)
+        assert high - low > 0.2
 
     def test_above_knee_gentle(self):
         """Between 80% and 60% stamina, ratio barely changes."""
         high = effective_ratio(0.8)
         low = effective_ratio(0.6)
-        assert high - low < 0.05
+        assert high - low < 0.02
 
     def test_floor_is_respected(self):
         """Even at 0 stamina, ratio never goes below floor."""

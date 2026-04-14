@@ -6,7 +6,7 @@ import math
 from .attributes import CoreAttributes
 from .types import Horse
 
-KNEE = 0.28
+KNEE = 0.20
 FLOOR = 0.45
 K = 10
 

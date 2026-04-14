@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class Strategy(ABC):
     @abstractmethod
     def act(self, progress: float) -> int:
-        """Return a discrete action index [0-80] based on current progress."""
+        """Return a discrete action index [0-53] based on current progress."""
         ...
 
     def act_continuous(self, horse: Horse) -> InputState | None:
@@ -22,38 +22,38 @@ class Strategy(ABC):
 
 
 class CruiseStrategy(Strategy):
-    """Always cruise: action (0, 0) = index 40."""
+    """Always cruise: action (0, 0) = index 13."""
 
     def act(self, progress: float) -> int:
-        return 40
+        return 13
 
 
 class PushEarlyStrategy(Strategy):
     """Push hard for the first 30%, then cruise."""
 
     def act(self, progress: float) -> int:
-        return 76 if progress < 0.3 else 40  # (1, 0) or (0, 0)
+        return 49 if progress < 0.3 else 13
 
 
 class PushLateStrategy(Strategy):
     """Cruise until 70%, then push hard."""
 
     def act(self, progress: float) -> int:
-        return 76 if progress >= 0.7 else 40  # (1, 0) or (0, 0)
+        return 49 if progress >= 0.7 else 13
 
 
 class FullPushStrategy(Strategy):
     """Push +1.0 the entire race — fast but exhausts mid-race."""
 
     def act(self, progress: float) -> int:
-        return 76  # (1, 0)
+        return 49  # (1, 0)
 
 
 class SteadyPushStrategy(Strategy):
     """Push +0.5 the entire race — faster than cruise, moderate drain."""
 
     def act(self, progress: float) -> int:
-        return 58  # (0.5, 0)
+        return 31  # (0.5, 0)
 
 
 class SteadyThenSprintStrategy(Strategy):
@@ -63,7 +63,7 @@ class SteadyThenSprintStrategy(Strategy):
         self._switch = switch_progress
 
     def act(self, progress: float) -> int:
-        return 76 if progress >= self._switch else 58  # (1.0, 0) or (0.5, 0)
+        return 49 if progress >= self._switch else 31
 
 
 class EarlySprint50Strategy(SteadyThenSprintStrategy):

@@ -1,10 +1,10 @@
-"""Discrete 9×9 action space — quarter-step resolution on both axes."""
+"""Discrete 6×9 action space — asymmetric braking (light brake only)."""
 
-TANGENTIAL_LEVELS: list[float] = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
+TANGENTIAL_LEVELS: list[float] = [-0.25, 0, 0.25, 0.5, 0.75, 1]
 NORMAL_LEVELS: list[float] = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
-NUM_TANGENTIAL = len(TANGENTIAL_LEVELS)  # 9
+NUM_TANGENTIAL = len(TANGENTIAL_LEVELS)  # 6
 NUM_NORMAL = len(NORMAL_LEVELS)          # 9
-NUM_ACTIONS = NUM_TANGENTIAL * NUM_NORMAL  # 81
+NUM_ACTIONS = NUM_TANGENTIAL * NUM_NORMAL  # 54
 
 
 def decode_action(index: int) -> tuple[float, float]:
