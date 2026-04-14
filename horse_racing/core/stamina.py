@@ -4,7 +4,7 @@ import math
 
 from .attributes import CoreAttributes
 from .track_navigator import TrackFrame
-from .types import Horse, InputState
+from .types import Horse, InputState, FIXED_DT, PHYS_SUBSTEPS
 
 OVERDRIVE_DRAIN_RATE = 0.01
 STAMINA_DRAIN_RATE = 0.015
@@ -14,12 +14,24 @@ SPEED_DRAIN_RATE = 0.002
 LATERAL_VELOCITY_DRAIN_RATE = 0.0008
 GRIP_FORCE_BASELINE = 2.0
 
+REFERENCE_CRUISE_TICKS = 2000
+
+
+def compute_drain_scale(track_total_length: float, cruise_speed: float) -> float:
+    """Scale drain so cruise-effort stamina usage is consistent across tracks."""
+    dt_per_tick = FIXED_DT * PHYS_SUBSTEPS
+    estimated_ticks = track_total_length / (cruise_speed * dt_per_tick)
+    if estimated_ticks < 1e-6:
+        return 1.0
+    return REFERENCE_CRUISE_TICKS / estimated_ticks
+
 
 def drain_stamina(
     horse: Horse,
     attrs: CoreAttributes,
     inp: InputState,
     frame: TrackFrame,
+    drain_scale: float = 1.0,
 ) -> None:
     """Drain stamina based on current effort. Mutates horse.current_stamina."""
     drain = 0.0
@@ -42,5 +54,6 @@ def drain_stamina(
     drain += abs(horse.tangential_vel) * SPEED_DRAIN_RATE
     drain += abs(horse.normal_vel) * LATERAL_VELOCITY_DRAIN_RATE
     drain *= attrs.drain_rate_mult
+    drain *= drain_scale
     horse.last_drain = drain
     horse.current_stamina = max(0.0, horse.current_stamina - drain)

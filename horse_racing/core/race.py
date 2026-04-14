@@ -10,7 +10,7 @@ from .attributes import create_default_attributes
 from .collision import CollisionWorld
 from .exhaustion import apply_exhaustion
 from .physics import step_physics
-from .stamina import drain_stamina
+from .stamina import compute_drain_scale, drain_stamina
 from .track import TrackSegment
 from .track_navigator import TrackNavigator
 from .types import (
@@ -89,6 +89,10 @@ class Race:
         )
         self._collision_world = CollisionWorld(segments, TRACK_HALF_WIDTH)
         self._add_horse_bodies()
+        # Compute drain normalization from track length
+        navigator = self.state.horses[0].navigator
+        default_cruise = create_default_attributes().cruise_speed
+        self._drain_scale = compute_drain_scale(navigator.total_length, default_cruise)
 
     def _add_horse_bodies(self) -> None:
         for h in self.state.horses:
@@ -122,7 +126,7 @@ class Race:
             if not h.finished:
                 frame = h.navigator.get_track_frame(h.pos)
                 horse_input = inputs.get(h.id, zero_input)
-                drain_stamina(h, h.effective_attributes, horse_input, frame)
+                drain_stamina(h, h.effective_attributes, horse_input, frame, self._drain_scale)
 
         for h in self.state.horses:
             if not h.finished and h.track_progress >= 1.0:
@@ -153,3 +157,6 @@ class Race:
         )
         self._collision_world = CollisionWorld(self._segments, TRACK_HALF_WIDTH)
         self._add_horse_bodies()
+        navigator = self.state.horses[0].navigator
+        default_cruise = create_default_attributes().cruise_speed
+        self._drain_scale = compute_drain_scale(navigator.total_length, default_cruise)
