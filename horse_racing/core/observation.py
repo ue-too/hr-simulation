@@ -15,11 +15,11 @@ if TYPE_CHECKING:
 
 LOOKAHEAD_DISTANCES = [25, 50, 100, 200]
 
-SELF_STATE_SIZE = 14
+SELF_STATE_SIZE = 15
 TRACK_CONTEXT_SIZE = 2 + len(LOOKAHEAD_DISTANCES) * 2  # 10
 OPPONENT_SLOT_SIZE = 5
 OPPONENT_SLOTS = MAX_HORSES - 1  # 23
-OBS_SIZE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE + OPPONENT_SLOTS * OPPONENT_SLOT_SIZE  # 139
+OBS_SIZE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE + OPPONENT_SLOTS * OPPONENT_SLOT_SIZE  # 140
 
 
 def normalize_trait(value: float, key: str) -> float:
@@ -43,7 +43,7 @@ def _normal_offset(
 
 
 def build_observations(race: Race) -> list[np.ndarray]:
-    """Build a 139-float observation vector per horse."""
+    """Build a 140-float observation vector per horse."""
     horses = race.state.horses
     result: list[np.ndarray] = []
 
@@ -67,14 +67,15 @@ def build_observations(race: Race) -> list[np.ndarray]:
         obs[11] = normalize_trait(base.turn_accel, "turn_accel")
         obs[12] = normalize_trait(base.cornering_grip, "cornering_grip")
         obs[13] = normalize_trait(base.weight, "weight")
+        obs[14] = self_horse.last_drain / base.max_stamina
 
-        obs[14] = curvature(frame.turn_radius)
-        obs[15] = frame.slope
+        obs[15] = curvature(frame.turn_radius)
+        obs[16] = frame.slope
 
         for i, dist in enumerate(LOOKAHEAD_DISTANCES):
             lookahead = self_horse.navigator.sample_track_ahead(self_horse.pos, dist)
-            obs[16 + i * 2] = curvature(lookahead.turn_radius)
-            obs[16 + i * 2 + 1] = lookahead.slope
+            obs[17 + i * 2] = curvature(lookahead.turn_radius)
+            obs[17 + i * 2 + 1] = lookahead.slope
 
         opponents = sorted(
             [h for h in horses if h.id != self_horse.id],

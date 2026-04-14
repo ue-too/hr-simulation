@@ -20,11 +20,11 @@ from horse_racing.core.track import load_track_json
 TRACKS_DIR = Path(__file__).resolve().parent.parent / "tracks"
 
 
-def test_obs_size_is_139():
-    assert OBS_SIZE == 139
+def test_obs_size_is_140():
+    assert OBS_SIZE == 140
 
 def test_self_state_size():
-    assert SELF_STATE_SIZE == 14
+    assert SELF_STATE_SIZE == 15
 
 def test_track_context_size():
     assert TRACK_CONTEXT_SIZE == 10
@@ -82,3 +82,14 @@ def test_opponent_slots_zero_padded():
     for slot in range(1, OPPONENT_SLOTS):
         offset = base + slot * OPPONENT_SLOT_SIZE
         assert o[offset + 0] == 0.0  # inactive
+
+def test_drain_rate_observation():
+    segments = load_track_json(TRACKS_DIR / "test_oval.json")
+    race = Race(segments, horse_count=2)
+    race.start(None)
+    # Tick once so drain is recorded
+    from horse_racing.core.types import InputState
+    race.tick({0: InputState(1.0, 0), 1: InputState(0, 0)})
+    obs = build_observations(race)
+    # Horse 0 pushed hard — should have nonzero drain
+    assert obs[0][14] > 0.0
