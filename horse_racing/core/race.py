@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 
-from .attributes import create_default_attributes
+from .attributes import CoreAttributes, create_default_attributes
 from .collision import CollisionWorld
 from .exhaustion import apply_exhaustion
 from .physics import step_physics
@@ -42,7 +43,16 @@ class RaceState:
 def spawn_horses(
     segments: list[TrackSegment],
     horse_count: int = 4,
+    attr_factories: dict[int, Callable[[], CoreAttributes]] | None = None,
 ) -> list[Horse]:
+    """Spawn horses at the start of the track.
+
+    Args:
+        segments: Track segments.
+        horse_count: Number of horses to spawn.
+        attr_factories: Optional per-horse attribute factories keyed by horse id.
+            If a horse id is not in the dict, create_default_attributes() is used.
+    """
     if len(segments) == 0:
         raise ValueError("spawn_horses: track has no segments")
     count = max(1, min(MAX_HORSES, horse_count))
@@ -58,7 +68,8 @@ def spawn_horses(
     for i in range(count):
         lane_offset = (-TRACK_HALF_WIDTH * 0.8 + i * lane_spacing) if count > 1 else 0.0
         pos = start_point + frame.normal * lane_offset
-        attrs = create_default_attributes()
+        factory = (attr_factories or {}).get(i, create_default_attributes)
+        attrs = factory()
         horses.append(Horse(
             id=i,
             color=_BASE_COLORS[i % len(_BASE_COLORS)],
@@ -77,12 +88,18 @@ def spawn_horses(
 
 
 class Race:
-    def __init__(self, segments: list[TrackSegment], horse_count: int = 4):
+    def __init__(
+        self,
+        segments: list[TrackSegment],
+        horse_count: int = 4,
+        attr_factories: dict[int, Callable[[], CoreAttributes]] | None = None,
+    ):
         self._segments = segments
         self._horse_count = horse_count
+        self._attr_factories = attr_factories
         self.state = RaceState(
             phase="gate",
-            horses=spawn_horses(segments, horse_count),
+            horses=spawn_horses(segments, horse_count, attr_factories),
             player_horse_id=None,
             tick=0,
             finish_order=[],
@@ -150,7 +167,7 @@ class Race:
     def reset(self) -> None:
         self.state = RaceState(
             phase="gate",
-            horses=spawn_horses(self._segments, self._horse_count),
+            horses=spawn_horses(self._segments, self._horse_count, self._attr_factories),
             player_horse_id=None,
             tick=0,
             finish_order=[],

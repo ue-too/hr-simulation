@@ -7,6 +7,7 @@ import numpy as np
 from gymnasium import spaces
 
 from ..action import NUM_ACTIONS, decode_action
+from ..core.attributes import create_default_attributes, create_randomized_attributes
 from ..core.observation import OBS_SIZE, build_observations
 from ..core.race import Race
 from ..core.track import load_track_json
@@ -48,9 +49,20 @@ class HorseRacingSingleEnv(gym.Env):
         self._prev_progress = 0.0
         self._prev_rank = 1
 
+    def _build_attr_factories(self) -> dict:
+        """Agent gets default attributes, opponents get randomized (±10%)."""
+        factories = {self._agent_id: create_default_attributes}
+        for i in range(self._horse_count):
+            if i != self._agent_id:
+                factories[i] = create_randomized_attributes
+        return factories
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        self._race = Race(self._segments, self._horse_count)
+        self._race = Race(
+            self._segments, self._horse_count,
+            attr_factories=self._build_attr_factories(),
+        )
         self._race.start(self._agent_id)
         self._step_count = 0
         self._prev_progress = 0.0
