@@ -1,6 +1,6 @@
 import pytest
 
-from horse_racing.reward import STAMINA_EFFICIENCY_BONUS, compute_reward
+from horse_racing.reward import OVERTAKE_BONUS, STAMINA_EFFICIENCY_BONUS, compute_reward
 
 
 def test_positive_progress():
@@ -84,3 +84,31 @@ def test_no_exhaustion_penalty():
         current_stamina=0.0, max_stamina=100.0,
     )
     assert reward == pytest.approx(0.01)
+
+
+def test_overtake_bonus():
+    """Passing opponents gives a small bonus."""
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        overtakes=2,
+    )
+    assert reward == pytest.approx(0.01 + OVERTAKE_BONUS * 2)
+
+
+def test_no_overtake_bonus_when_zero():
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        overtakes=0,
+    )
+    assert reward == pytest.approx(0.01)
+
+
+def test_overtake_bonus_at_finish():
+    """Overtake bonus stacks with finish bonus."""
+    reward = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        current_stamina=0.0, max_stamina=100.0,
+        overtakes=1,
+    )
+    expected = 0.01 + OVERTAKE_BONUS + 10.0 + STAMINA_EFFICIENCY_BONUS
+    assert reward == pytest.approx(expected)

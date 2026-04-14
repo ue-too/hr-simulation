@@ -46,6 +46,7 @@ class HorseRacingSingleEnv(gym.Env):
         self._opponent_strategies: dict[int, Strategy] = {}
         self._step_count = 0
         self._prev_progress = 0.0
+        self._prev_rank = 1
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
@@ -53,6 +54,7 @@ class HorseRacingSingleEnv(gym.Env):
         self._race.start(self._agent_id)
         self._step_count = 0
         self._prev_progress = 0.0
+        self._prev_rank = self._horse_count  # start at the back
 
         # Assign scripted strategies to opponents
         self._opponent_strategies = {}
@@ -91,13 +93,22 @@ class HorseRacingSingleEnv(gym.Env):
         agent_horse = self._race.state.horses[self._agent_id]
         curr_progress = agent_horse.track_progress
 
+        # Compute current rank (1 = leading)
+        curr_rank = 1
+        for h in self._race.state.horses:
+            if h.id != self._agent_id and h.track_progress > agent_horse.track_progress:
+                curr_rank += 1
+        overtakes = max(0, self._prev_rank - curr_rank)
+
         # Compute reward
         reward = compute_reward(
             self._prev_progress, curr_progress, agent_horse.finish_order,
             agent_horse.current_stamina,
             agent_horse.base_attributes.max_stamina,
+            overtakes=overtakes,
         )
         self._prev_progress = curr_progress
+        self._prev_rank = curr_rank
 
         terminated = agent_horse.finished
         truncated = self._step_count >= self._max_steps
