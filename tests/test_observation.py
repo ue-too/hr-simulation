@@ -20,11 +20,11 @@ from horse_racing.core.track import load_track_json
 TRACKS_DIR = Path(__file__).resolve().parent.parent / "tracks"
 
 
-def test_obs_size_is_140():
-    assert OBS_SIZE == 140
+def test_obs_size_is_141():
+    assert OBS_SIZE == 141
 
 def test_self_state_size():
-    assert SELF_STATE_SIZE == 15
+    assert SELF_STATE_SIZE == 16
 
 def test_track_context_size():
     assert TRACK_CONTEXT_SIZE == 10
@@ -82,6 +82,17 @@ def test_opponent_slots_zero_padded():
     for slot in range(1, OPPONENT_SLOTS):
         offset = base + slot * OPPONENT_SLOT_SIZE
         assert o[offset + 0] == 0.0  # inactive
+
+def test_lateral_offset_observation():
+    segments = load_track_json(TRACKS_DIR / "test_oval.json")
+    race = Race(segments, horse_count=2)
+    race.start(None)
+    obs = build_observations(race)
+    # Horses start at different lane offsets, so lateral obs should differ
+    assert obs[0][15] != pytest.approx(obs[1][15], abs=0.01)
+    # Values should be in [-1, 1] range (normalized by TRACK_HALF_WIDTH)
+    for o in obs:
+        assert -1.5 <= o[15] <= 1.5
 
 def test_drain_rate_observation():
     segments = load_track_json(TRACKS_DIR / "test_oval.json")
