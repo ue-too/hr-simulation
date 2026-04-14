@@ -21,6 +21,20 @@ class Strategy(ABC):
         return None
 
 
+def _jitter_action(base_index: int) -> int:
+    """Add ±1 tangential level jitter to an action index.
+
+    Keeps the same normal component but shifts tangential by -1, 0, or +1
+    level with equal probability. Clamps to valid range.
+    """
+    from ..action import NUM_NORMAL, NUM_TANGENTIAL
+
+    ti = base_index // NUM_NORMAL
+    ni = base_index % NUM_NORMAL
+    ti = max(0, min(NUM_TANGENTIAL - 1, ti + random.choice([-1, 0, 1])))
+    return ti * NUM_NORMAL + ni
+
+
 class CruiseStrategy(Strategy):
     """Always cruise: action (0, 0) = index 13."""
 
@@ -29,52 +43,58 @@ class CruiseStrategy(Strategy):
 
 
 class PushEarlyStrategy(Strategy):
-    """Push hard for the first 30%, then cruise."""
+    """Push hard early, then cruise. Switch point randomized [0.2, 0.4]."""
+
+    def __init__(self, switch: float | None = None):
+        self._switch = switch if switch is not None else random.uniform(0.2, 0.4)
 
     def act(self, progress: float) -> int:
-        return 49 if progress < 0.3 else 13
+        return _jitter_action(49) if progress < self._switch else _jitter_action(13)
 
 
 class PushLateStrategy(Strategy):
-    """Cruise until 70%, then push hard."""
+    """Cruise then push hard late. Switch point randomized [0.6, 0.8]."""
+
+    def __init__(self, switch: float | None = None):
+        self._switch = switch if switch is not None else random.uniform(0.6, 0.8)
 
     def act(self, progress: float) -> int:
-        return 49 if progress >= 0.7 else 13
+        return _jitter_action(49) if progress >= self._switch else _jitter_action(13)
 
 
 class FullPushStrategy(Strategy):
     """Push +1.0 the entire race — fast but exhausts mid-race."""
 
     def act(self, progress: float) -> int:
-        return 49  # (1, 0)
+        return _jitter_action(49)
 
 
 class SteadyPushStrategy(Strategy):
     """Push +0.5 the entire race — faster than cruise, moderate drain."""
 
     def act(self, progress: float) -> int:
-        return 31  # (0.5, 0)
+        return _jitter_action(31)
 
 
 class SteadyThenSprintStrategy(Strategy):
-    """Push +0.5 then sprint +1.0 in the final stretch. ~1935-1983 ticks."""
+    """Push +0.5 then sprint +1.0 in the final stretch."""
 
-    def __init__(self, switch_progress: float = 0.6):
-        self._switch = switch_progress
+    def __init__(self, switch_progress: float | None = None):
+        self._switch = switch_progress if switch_progress is not None else random.uniform(0.4, 0.8)
 
     def act(self, progress: float) -> int:
-        return 49 if progress >= self._switch else 31
+        return _jitter_action(49) if progress >= self._switch else _jitter_action(31)
 
 
 class EarlySprint50Strategy(SteadyThenSprintStrategy):
-    """Steady then sprint at 50% — aggressive, finishes ~1935 ticks."""
+    """Steady then sprint at 50% — aggressive."""
 
     def __init__(self):
         super().__init__(switch_progress=0.5)
 
 
 class LateSprint80Strategy(SteadyThenSprintStrategy):
-    """Steady then sprint at 80% — conservative, finishes ~1983 ticks."""
+    """Steady then sprint at 80% — conservative."""
 
     def __init__(self):
         super().__init__(switch_progress=0.8)
@@ -114,21 +134,21 @@ class InsideLaneStrategy(LaneHolderStrategy):
     """Smart pacer holding inside lane (offset -5.0m)."""
 
     def __init__(self):
-        super().__init__(EarlySprint50Strategy(), target_offset=-5.0)
+        super().__init__(SteadyThenSprintStrategy(), target_offset=-5.0)
 
 
 class OutsideLaneStrategy(LaneHolderStrategy):
     """Smart pacer holding outside lane (offset +5.0m)."""
 
     def __init__(self):
-        super().__init__(EarlySprint50Strategy(), target_offset=5.0)
+        super().__init__(SteadyThenSprintStrategy(), target_offset=5.0)
 
 
 class CenterLaneStrategy(LaneHolderStrategy):
     """Smart pacer holding center lane (offset 0.0m)."""
 
     def __init__(self):
-        super().__init__(EarlySprint50Strategy(), target_offset=0.0)
+        super().__init__(SteadyThenSprintStrategy(), target_offset=0.0)
 
 
 _STRATEGIES = [
@@ -137,6 +157,7 @@ _STRATEGIES = [
     PushLateStrategy,
     FullPushStrategy,
     SteadyPushStrategy,
+    SteadyThenSprintStrategy,
     EarlySprint50Strategy,
     LateSprint80Strategy,
     InsideLaneStrategy,
