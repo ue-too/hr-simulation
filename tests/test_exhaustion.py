@@ -34,16 +34,16 @@ class TestEffectiveRatio:
             assert values[i] >= values[i - 1]
 
     def test_knee_region_has_steep_drop(self):
-        """Between 30% and 10% stamina, ratio should drop significantly."""
-        high = effective_ratio(0.3)
-        low = effective_ratio(0.1)
-        assert high - low > 0.2
+        """Between 20% and 5% stamina, ratio should drop significantly."""
+        high = effective_ratio(0.2)
+        low = effective_ratio(0.05)
+        assert high - low > 0.15
 
     def test_above_knee_gentle(self):
         """Between 80% and 60% stamina, ratio barely changes."""
         high = effective_ratio(0.8)
         low = effective_ratio(0.6)
-        assert high - low < 0.02
+        assert high - low < 0.01
 
     def test_floor_is_respected(self):
         """Even at 0 stamina, ratio never goes below floor."""
@@ -70,7 +70,7 @@ class TestApplyExhaustion:
         result = apply_exhaustion(horse)
         base = horse.base_attributes
         assert result.cruise_speed == pytest.approx(base.cruise_speed * 0.45, abs=0.1)
-        assert result.max_speed == pytest.approx(base.max_speed * 0.38, abs=0.1)
+        assert result.max_speed == pytest.approx(base.max_speed * 0.40, abs=0.1)
 
     def test_half_stamina_mild_degradation(self):
         horse = make_horse(current_stamina=50.0)
@@ -81,10 +81,10 @@ class TestApplyExhaustion:
         assert result.cruise_speed < base.cruise_speed
 
     def test_low_stamina_significant_degradation(self):
-        horse = make_horse(current_stamina=10.0)
+        horse = make_horse(current_stamina=5.0)
         result = apply_exhaustion(horse)
         base = horse.base_attributes
-        # At 10% stamina, ratio ~0.50 — heavily degraded
+        # At 5% stamina, ratio ~0.53 — heavily degraded
         assert result.cruise_speed < base.cruise_speed * 0.55
 
     def test_max_speed_degrades_faster_than_cruise(self):

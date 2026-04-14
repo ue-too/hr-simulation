@@ -6,14 +6,14 @@ import math
 from .attributes import CoreAttributes
 from .types import Horse
 
-KNEE = 0.20
+KNEE = 0.10
 FLOOR = 0.45
 K = 10
 
 # Max speed degrades faster — push ceiling shrinks before cruise does
-MAX_SPEED_KNEE = 0.30
-MAX_SPEED_FLOOR = 0.38
-MAX_SPEED_K = 12
+MAX_SPEED_KNEE = 0.25
+MAX_SPEED_FLOOR = 0.40
+MAX_SPEED_K = 10
 
 
 def effective_ratio(
