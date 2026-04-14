@@ -1,9 +1,6 @@
 import pytest
 
-from horse_racing.reward import (
-    EXHAUSTION_PENALTY,
-    compute_reward,
-)
+from horse_racing.reward import STAMINA_EFFICIENCY_BONUS, compute_reward
 
 
 def test_positive_progress():
@@ -22,43 +19,68 @@ def test_no_progress():
 
 def test_first_place_bonus():
     reward = compute_reward(
-        prev_progress=0.99, curr_progress=1.0, finish_order=1
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        current_stamina=0.0, max_stamina=100.0,
     )
-    assert reward == pytest.approx(0.01 + 10.0)
+    # progress + placement + efficiency (used all stamina)
+    assert reward == pytest.approx(0.01 + 10.0 + STAMINA_EFFICIENCY_BONUS)
 
 
 def test_second_place_bonus():
     reward = compute_reward(
-        prev_progress=0.99, curr_progress=1.0, finish_order=2
+        prev_progress=0.99, curr_progress=1.0, finish_order=2,
+        current_stamina=0.0, max_stamina=100.0,
     )
-    assert reward == pytest.approx(0.01 + 5.0)
+    assert reward == pytest.approx(0.01 + 5.0 + STAMINA_EFFICIENCY_BONUS)
 
 
 def test_third_place_bonus():
     reward = compute_reward(
-        prev_progress=0.99, curr_progress=1.0, finish_order=3
+        prev_progress=0.99, curr_progress=1.0, finish_order=3,
+        current_stamina=0.0, max_stamina=100.0,
     )
-    assert reward == pytest.approx(0.01 + 2.0)
+    assert reward == pytest.approx(0.01 + 2.0 + STAMINA_EFFICIENCY_BONUS)
 
 
 def test_no_bonus_for_fourth():
     reward = compute_reward(
-        prev_progress=0.99, curr_progress=1.0, finish_order=4
+        prev_progress=0.99, curr_progress=1.0, finish_order=4,
+        current_stamina=0.0, max_stamina=100.0,
+    )
+    assert reward == pytest.approx(0.01 + STAMINA_EFFICIENCY_BONUS)
+
+
+def test_efficiency_bonus_scales_with_stamina_used():
+    # Finish with 50% stamina = half the efficiency bonus
+    reward = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        current_stamina=50.0, max_stamina=100.0,
+    )
+    expected = 0.01 + 10.0 + STAMINA_EFFICIENCY_BONUS * 0.5
+    assert reward == pytest.approx(expected)
+
+
+def test_efficiency_bonus_zero_when_full_stamina():
+    reward = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        current_stamina=100.0, max_stamina=100.0,
+    )
+    assert reward == pytest.approx(0.01 + 10.0)
+
+
+def test_no_efficiency_bonus_mid_race():
+    """Efficiency bonus only triggers at finish (finish_order is not None)."""
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        current_stamina=10.0, max_stamina=100.0,
     )
     assert reward == pytest.approx(0.01)
 
 
-def test_exhaustion_penalty_when_stamina_zero():
+def test_no_exhaustion_penalty():
+    """Old exhaustion penalty is removed — zero stamina mid-race has no direct penalty."""
     reward = compute_reward(
         prev_progress=0.5, curr_progress=0.51, finish_order=None,
-        current_stamina=0.0,
-    )
-    assert reward == pytest.approx(0.01 + EXHAUSTION_PENALTY)
-
-
-def test_no_penalty_when_stamina_positive():
-    reward = compute_reward(
-        prev_progress=0.5, curr_progress=0.51, finish_order=None,
-        current_stamina=50.0,
+        current_stamina=0.0, max_stamina=100.0,
     )
     assert reward == pytest.approx(0.01)
