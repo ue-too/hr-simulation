@@ -1,35 +1,46 @@
-"""Binary exhaustion model — mirrors TS exhaustion.ts."""
+"""Gradual exhaustion model — sigmoid-knee degradation curve."""
 
 import dataclasses
+import math
 
 from .attributes import CoreAttributes
 from .types import Horse
 
-EXHAUSTION_DECAY = 0.95
+KNEE = 0.28
+FLOOR = 0.45
+K = 10
 
-_CRUISE_SPEED_FLOOR_RATIO = 0.4
-_MAX_SPEED_FLOOR_RATIO = 0.55
-_FORWARD_ACCEL_FLOOR_RATIO = 0.15
-_TURN_ACCEL_FLOOR_RATIO = 0.3
+
+def effective_ratio(
+    stamina_pct: float,
+    knee: float = KNEE,
+    floor: float = FLOOR,
+    k: float = K,
+) -> float:
+    """Map stamina percentage (0-1) to stat multiplier (floor-1.0).
+
+    Uses a sigmoid curve centered on `knee`:
+    - Above knee: stats degrade gently
+    - Below knee: stats drop steeply
+    - At 0 stamina: stats bottom out at `floor`
+    """
+    raw = 1.0 / (1.0 + math.exp(-k * (stamina_pct - knee)))
+    sig_at_1 = 1.0 / (1.0 + math.exp(-k * (1.0 - knee)))
+    sig_at_0 = 1.0 / (1.0 + math.exp(-k * (0.0 - knee)))
+    normalized = (raw - sig_at_0) / (sig_at_1 - sig_at_0)
+    return floor + (1.0 - floor) * normalized
 
 
 def apply_exhaustion(horse: Horse) -> CoreAttributes:
-    """Resolve effective attributes based on stamina state."""
+    """Compute effective attributes based on current stamina level."""
     base = horse.base_attributes
-
-    if horse.current_stamina > 0:
-        return dataclasses.replace(base)
-
-    eff = horse.effective_attributes
-    floor_cruise = base.cruise_speed * _CRUISE_SPEED_FLOOR_RATIO
-    floor_max_speed = base.cruise_speed * _MAX_SPEED_FLOOR_RATIO
-    floor_forward_accel = base.forward_accel * _FORWARD_ACCEL_FLOOR_RATIO
-    floor_turn_accel = base.turn_accel * _TURN_ACCEL_FLOOR_RATIO
-
+    stamina_pct = horse.current_stamina / base.max_stamina if base.max_stamina > 0 else 0.0
+    stamina_pct = max(0.0, min(1.0, stamina_pct))
+    ratio = effective_ratio(stamina_pct)
     return dataclasses.replace(
         base,
-        cruise_speed=floor_cruise + (eff.cruise_speed - floor_cruise) * EXHAUSTION_DECAY,
-        max_speed=floor_max_speed + (eff.max_speed - floor_max_speed) * EXHAUSTION_DECAY,
-        forward_accel=floor_forward_accel + (eff.forward_accel - floor_forward_accel) * EXHAUSTION_DECAY,
-        turn_accel=floor_turn_accel + (eff.turn_accel - floor_turn_accel) * EXHAUSTION_DECAY,
+        cruise_speed=base.cruise_speed * ratio,
+        max_speed=base.max_speed * ratio,
+        forward_accel=base.forward_accel * ratio,
+        turn_accel=base.turn_accel * ratio,
     )
