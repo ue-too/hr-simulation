@@ -10,6 +10,11 @@ KNEE = 0.20
 FLOOR = 0.45
 K = 10
 
+# Max speed degrades faster — push ceiling shrinks before cruise does
+MAX_SPEED_KNEE = 0.30
+MAX_SPEED_FLOOR = 0.38
+MAX_SPEED_K = 12
+
 
 def effective_ratio(
     stamina_pct: float,
@@ -32,15 +37,21 @@ def effective_ratio(
 
 
 def apply_exhaustion(horse: Horse) -> CoreAttributes:
-    """Compute effective attributes based on current stamina level."""
+    """Compute effective attributes based on current stamina level.
+
+    max_speed uses an aggressive curve so the push ceiling shrinks
+    faster than cruise — the late-race "kick" comes from holding pace
+    while exhausted opponents fade, not from supernatural acceleration.
+    """
     base = horse.base_attributes
     stamina_pct = horse.current_stamina / base.max_stamina if base.max_stamina > 0 else 0.0
     stamina_pct = max(0.0, min(1.0, stamina_pct))
     ratio = effective_ratio(stamina_pct)
+    max_speed_ratio = effective_ratio(stamina_pct, MAX_SPEED_KNEE, MAX_SPEED_FLOOR, MAX_SPEED_K)
     return dataclasses.replace(
         base,
         cruise_speed=base.cruise_speed * ratio,
-        max_speed=base.max_speed * ratio,
+        max_speed=base.max_speed * max_speed_ratio,
         forward_accel=base.forward_accel * ratio,
         turn_accel=base.turn_accel * ratio,
     )

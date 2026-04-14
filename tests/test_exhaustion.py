@@ -70,7 +70,7 @@ class TestApplyExhaustion:
         result = apply_exhaustion(horse)
         base = horse.base_attributes
         assert result.cruise_speed == pytest.approx(base.cruise_speed * 0.45, abs=0.1)
-        assert result.max_speed == pytest.approx(base.max_speed * 0.45, abs=0.1)
+        assert result.max_speed == pytest.approx(base.max_speed * 0.38, abs=0.1)
 
     def test_half_stamina_mild_degradation(self):
         horse = make_horse(current_stamina=50.0)
@@ -86,6 +86,24 @@ class TestApplyExhaustion:
         base = horse.base_attributes
         # At 10% stamina, ratio ~0.50 — heavily degraded
         assert result.cruise_speed < base.cruise_speed * 0.55
+
+    def test_max_speed_degrades_faster_than_cruise(self):
+        """Push ceiling shrinks faster — at 40% stamina, gap is much smaller."""
+        horse_full = make_horse(current_stamina=100.0)
+        horse_low = make_horse(current_stamina=40.0)
+        full = apply_exhaustion(horse_full)
+        low = apply_exhaustion(horse_low)
+        full_gap = full.max_speed - full.cruise_speed
+        low_gap = low.max_speed - low.cruise_speed
+        # At full stamina, big gap; at 40%, much smaller
+        assert low_gap < full_gap * 0.8
+
+    def test_max_speed_always_above_cruise(self):
+        """Push always gives something — max_speed never drops below cruise."""
+        for stam in range(0, 101, 5):
+            horse = make_horse(current_stamina=float(stam))
+            result = apply_exhaustion(horse)
+            assert result.max_speed >= result.cruise_speed - 0.5  # small tolerance
 
     def test_no_iterative_decay(self):
         """New model is stateless — same stamina always gives same result."""
