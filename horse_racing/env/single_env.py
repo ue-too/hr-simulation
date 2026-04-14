@@ -7,7 +7,7 @@ import numpy as np
 from gymnasium import spaces
 
 from ..action import NUM_ACTIONS, decode_action
-from ..core.attributes import CoreAttributes, create_default_attributes, create_randomized_attributes
+from ..core.attributes import create_default_attributes, create_randomized_attributes
 from ..core.observation import OBS_SIZE, build_observations
 from ..core.race import Race
 from ..core.track import load_track_json
@@ -49,24 +49,9 @@ class HorseRacingSingleEnv(gym.Env):
         self._prev_progress = 0.0
         self._prev_rank = 1
 
-    @staticmethod
-    def _agent_attributes() -> CoreAttributes:
-        """Agent gets +5% on speed/accel traits."""
-        d = create_default_attributes()
-        return CoreAttributes(
-            cruise_speed=d.cruise_speed * 1.05,
-            max_speed=d.max_speed * 1.05,
-            forward_accel=d.forward_accel * 1.05,
-            turn_accel=d.turn_accel * 1.05,
-            cornering_grip=d.cornering_grip,
-            max_stamina=d.max_stamina,
-            drain_rate_mult=d.drain_rate_mult,
-            weight=d.weight,
-        )
-
     def _build_attr_factories(self) -> dict:
-        """Agent gets +5% speed edge, opponents get randomized (±10%)."""
-        factories = {self._agent_id: self._agent_attributes}
+        """Agent gets default stats, opponents get randomized (±10%)."""
+        factories = {self._agent_id: create_default_attributes}
         for i in range(self._horse_count):
             if i != self._agent_id:
                 factories[i] = create_randomized_attributes
