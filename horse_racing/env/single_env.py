@@ -19,7 +19,7 @@ from ..reward import compute_reward
 class HorseRacingSingleEnv(gym.Env):
     """Single-agent horse racing environment.
 
-    The agent controls one horse. Opponents use scripted strategies.
+    The agent controls one horse. Opponents use scripted or self-play strategies.
     """
 
     metadata = {"render_modes": []}
@@ -30,6 +30,8 @@ class HorseRacingSingleEnv(gym.Env):
         horse_count: int = 4,
         agent_horse_id: int = 0,
         max_steps: int = 5000,
+        self_play_predict_fn=None,
+        self_play_ratio: float = 0.0,
     ):
         super().__init__()
         self._track_path = track_path
@@ -37,6 +39,8 @@ class HorseRacingSingleEnv(gym.Env):
         self._horse_count = horse_count
         self._agent_id = agent_horse_id
         self._max_steps = max_steps
+        self._self_play_predict_fn = self_play_predict_fn
+        self._self_play_ratio = self_play_ratio
 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_SIZE,), dtype=np.float32
@@ -68,11 +72,18 @@ class HorseRacingSingleEnv(gym.Env):
         self._prev_progress = 0.0
         self._prev_rank = self._horse_count  # start at the back
 
-        # Assign scripted strategies to opponents
+        # Assign strategies to opponents
         self._opponent_strategies = {}
         for h in self._race.state.horses:
             if h.id != self._agent_id:
-                self._opponent_strategies[h.id] = random_strategy()
+                if (self._self_play_predict_fn is not None
+                        and np.random.random() < self._self_play_ratio):
+                    from ..opponents.self_play import SelfPlayStrategy
+                    self._opponent_strategies[h.id] = SelfPlayStrategy(
+                        self._self_play_predict_fn, self._race, h.id,
+                    )
+                else:
+                    self._opponent_strategies[h.id] = random_strategy()
 
         obs = self._get_obs()
         info = self._get_info()
