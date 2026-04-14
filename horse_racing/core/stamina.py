@@ -42,4 +42,5 @@ def drain_stamina(
     drain += abs(horse.tangential_vel) * SPEED_DRAIN_RATE
     drain += abs(horse.normal_vel) * LATERAL_VELOCITY_DRAIN_RATE
     drain *= attrs.drain_rate_mult
+    horse.last_drain = drain
     horse.current_stamina = max(0.0, horse.current_stamina - drain)

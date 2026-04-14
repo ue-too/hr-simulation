@@ -66,3 +66,4 @@ class Horse:
     effective_attributes: CoreAttributes = field(
         default_factory=lambda: CoreAttributes(13, 20, 1.0, 1.0, 1.0, 100, 1.0, 500)
     )
+    last_drain: float = 0.0

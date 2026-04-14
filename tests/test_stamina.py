@@ -87,3 +87,23 @@ class TestDrainStamina:
         drain_1x = 100.0 - horse2.current_stamina
         drain_2x = 100.0 - horse.current_stamina
         assert drain_2x == pytest.approx(drain_1x * 2.0, abs=0.001)
+
+
+class TestLastDrain:
+    def test_last_drain_recorded(self):
+        horse = make_horse(tangential_vel=18.0)
+        attrs = horse.base_attributes
+        drain_stamina(horse, attrs, InputState(1.0, 0), flat_straight())
+        assert horse.last_drain > 0.0
+
+    def test_last_drain_matches_stamina_change(self):
+        horse = make_horse(tangential_vel=13.0)
+        attrs = horse.base_attributes
+        before = horse.current_stamina
+        drain_stamina(horse, attrs, InputState(0.5, 0), flat_straight())
+        actual_drain = before - horse.current_stamina
+        assert horse.last_drain == pytest.approx(actual_drain)
+
+    def test_last_drain_zero_default(self):
+        horse = make_horse()
+        assert horse.last_drain == 0.0
