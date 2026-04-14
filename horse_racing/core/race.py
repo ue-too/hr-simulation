@@ -129,6 +129,7 @@ class Race:
                 h.finished = True
                 h.finish_order = len(self.state.finish_order) + 1
                 self.state.finish_order.append(h.id)
+                self._collision_world.remove_horse(h.id)
 
         player_id = self.state.player_horse_id
         is_player_mode = player_id is not None

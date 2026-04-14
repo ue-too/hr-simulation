@@ -9,20 +9,20 @@ from horse_racing.action import (
 
 
 def test_tangential_levels():
-    assert TANGENTIAL_LEVELS == [-1, -0.5, 0, 0.25, 0.5, 0.75, 1]
+    assert TANGENTIAL_LEVELS == [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 
 
 def test_normal_levels():
-    assert NORMAL_LEVELS == [-1, -0.5, 0, 0.5, 1]
+    assert NORMAL_LEVELS == [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 
 
 def test_axis_counts():
-    assert NUM_TANGENTIAL == 7
-    assert NUM_NORMAL == 5
+    assert NUM_TANGENTIAL == 9
+    assert NUM_NORMAL == 9
 
 
 def test_num_actions():
-    assert NUM_ACTIONS == 35
+    assert NUM_ACTIONS == 81
 
 
 def test_decode_index_0():
@@ -32,21 +32,21 @@ def test_decode_index_0():
 
 
 def test_decode_cruise():
-    """Cruise = tangential 0, normal 0 → index 2*5+2 = 12."""
-    t, n = decode_action(12)
+    """Cruise = tangential 0, normal 0 → index 4*9+4 = 40."""
+    t, n = decode_action(40)
     assert t == 0
     assert n == 0
 
 
 def test_decode_last():
-    t, n = decode_action(34)
+    t, n = decode_action(80)
     assert t == 1
     assert n == 1
 
 
 def test_decode_075_push():
-    """0.75 tangential, 0 normal → index 5*5+2 = 27."""
-    t, n = decode_action(27)
+    """0.75 tangential, 0 normal → index 7*9+4 = 67."""
+    t, n = decode_action(67)
     assert t == 0.75
     assert n == 0
 

@@ -205,6 +205,9 @@ class CollisionWorld:
             id=horse_id, obb=obb, velocity=np.zeros(2), mass=mass
         )
 
+    def remove_horse(self, horse_id: int) -> None:
+        self._horses.pop(horse_id, None)
+
     def set_horse_state(
         self, horse_id: int, pos: np.ndarray, vel: np.ndarray, frame: TrackFrame,
         seg_index: int = 0,
