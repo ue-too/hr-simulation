@@ -111,6 +111,10 @@ class Race:
         default_cruise = create_default_attributes().cruise_speed
         self._drain_scale = compute_drain_scale(navigator.total_length, default_cruise)
 
+    def had_rail_contact(self, horse_id: int) -> bool:
+        """Whether the horse touched a rail during the last tick."""
+        return self._collision_world.had_rail_contact(horse_id)
+
     def _add_horse_bodies(self) -> None:
         for h in self.state.horses:
             frame = h.navigator.get_track_frame(h.pos)

@@ -123,6 +123,7 @@ class CollisionWorld:
         self._rail_bodies: list[RailBody] = []
         self._rails_by_seg: dict[int, list[int]] = {}  # seg_index -> [rail_body indices]
         self._num_track_segments = len(segments)
+        self._rail_contacts: dict[int, bool] = {}  # horse_id -> had rail contact this step
         self._build_rails(segments, half_track_width)
 
     def _build_rails(
@@ -221,8 +222,13 @@ class CollisionWorld:
         body = self._horses[horse_id]
         return body.obb.center.copy(), body.velocity.copy()
 
+    def had_rail_contact(self, horse_id: int) -> bool:
+        """Whether this horse had rail contact during the last step."""
+        return self._rail_contacts.get(horse_id, False)
+
     def step(self, dt: float, horse_seg_indices: dict[int, int] | None = None) -> None:
         horse_ids = list(self._horses.keys())
+        self._rail_contacts = {hid: False for hid in horse_ids}
 
         # Horse-horse collisions
         for i in range(len(horse_ids)):
@@ -261,6 +267,7 @@ class CollisionWorld:
                 if result is not None:
                     depth, normal = result
                     self._resolve_static(body, depth, normal)
+                    self._rail_contacts[hid] = True
 
     def _resolve_dynamic(
         self, a: HorseBody, b: HorseBody, depth: float, normal: np.ndarray

@@ -128,11 +128,13 @@ class HorseRacingSingleEnv(gym.Env):
         overtakes = max(0, self._prev_rank - curr_rank)
 
         # Compute reward
+        rail_contact = self._race.had_rail_contact(self._agent_id)
         reward = compute_reward(
             self._prev_progress, curr_progress, agent_horse.finish_order,
             agent_horse.current_stamina,
             agent_horse.base_attributes.max_stamina,
             overtakes=overtakes,
+            rail_contact=rail_contact,
         )
         self._prev_progress = curr_progress
         self._prev_rank = curr_rank

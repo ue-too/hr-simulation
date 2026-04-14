@@ -1,6 +1,6 @@
 import pytest
 
-from horse_racing.reward import OVERTAKE_BONUS, STAMINA_EFFICIENCY_BONUS, compute_reward
+from horse_racing.reward import OVERTAKE_BONUS, RAIL_COLLISION_PENALTY, STAMINA_EFFICIENCY_BONUS, compute_reward
 
 
 def test_positive_progress():
@@ -112,3 +112,19 @@ def test_overtake_bonus_at_finish():
     )
     expected = 0.01 + OVERTAKE_BONUS + 10.0 + STAMINA_EFFICIENCY_BONUS
     assert reward == pytest.approx(expected)
+
+
+def test_rail_collision_penalty():
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        rail_contact=True,
+    )
+    assert reward == pytest.approx(0.01 - RAIL_COLLISION_PENALTY)
+
+
+def test_no_rail_penalty_when_no_contact():
+    reward = compute_reward(
+        prev_progress=0.5, curr_progress=0.51, finish_order=None,
+        rail_contact=False,
+    )
+    assert reward == pytest.approx(0.01)
