@@ -52,6 +52,8 @@ class HorseRacingSingleEnv(gym.Env):
         self._step_count = 0
         self._prev_progress = 0.0
         self._prev_rank = 1
+        self._prev_tang = 0.0
+        self._prev_norm = 0.0
 
     def _build_attr_factories(self) -> dict:
         """Agent gets default stats, opponents get randomized (±10%)."""
@@ -71,6 +73,8 @@ class HorseRacingSingleEnv(gym.Env):
         self._step_count = 0
         self._prev_progress = 0.0
         self._prev_rank = self._horse_count  # start at the back
+        self._prev_tang = 0.0
+        self._prev_norm = 0.0
 
         # Assign strategies to opponents
         self._opponent_strategies = {}
@@ -125,17 +129,28 @@ class HorseRacingSingleEnv(gym.Env):
 
         # Compute reward
         rail_contact = self._race.had_rail_contact(self._agent_id)
+        cruise = agent_horse.base_attributes.cruise_speed
         stamina_frac = agent_horse.current_stamina / agent_horse.base_attributes.max_stamina
+        speed_ratio = agent_horse.tangential_vel / cruise if cruise > 0 else 0.0
         reward = compute_reward(
             self._prev_progress, curr_progress, agent_horse.finish_order,
             finishing_speed=agent_horse.tangential_vel,
-            cruise_speed=agent_horse.base_attributes.cruise_speed,
+            cruise_speed=cruise,
             overtakes=overtakes,
             rail_contact=rail_contact,
             stamina_frac=stamina_frac,
+            speed_ratio=speed_ratio,
+            rank=curr_rank,
+            horse_count=self._horse_count,
+            prev_tang=self._prev_tang,
+            curr_tang=tang,
+            prev_norm=self._prev_norm,
+            curr_norm=norm,
         )
         self._prev_progress = curr_progress
         self._prev_rank = curr_rank
+        self._prev_tang = tang
+        self._prev_norm = norm
 
         terminated = agent_horse.finished
         truncated = self._step_count >= self._max_steps
