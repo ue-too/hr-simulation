@@ -1,6 +1,13 @@
 import pytest
 
-from horse_racing.reward import FINISHING_SPEED_BONUS, OVERTAKE_BONUS, RAIL_COLLISION_PENALTY, compute_reward
+from horse_racing.reward import (
+    DEPLETION_PENALTY,
+    DEPLETION_THRESHOLD,
+    FINISHING_SPEED_BONUS,
+    OVERTAKE_BONUS,
+    RAIL_COLLISION_PENALTY,
+    compute_reward,
+)
 
 
 def test_positive_progress():
@@ -72,7 +79,31 @@ def test_speed_bonus_zero_when_stopped():
         prev_progress=0.99, curr_progress=1.0, finish_order=1,
         finishing_speed=0.0, cruise_speed=13.0,
     )
-    assert reward == pytest.approx(0.01 + 10.0)
+    # No speed bonus + full depletion penalty (0.6 below threshold)
+    expected = 0.01 + 10.0 - DEPLETION_PENALTY * DEPLETION_THRESHOLD
+    assert reward == pytest.approx(expected)
+
+
+def test_depletion_penalty_below_threshold():
+    """Finishing below threshold incurs penalty."""
+    reward = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        finishing_speed=6.5, cruise_speed=13.0,  # 0.5× cruise
+    )
+    speed_ratio = 6.5 / 13.0
+    expected = 0.01 + 10.0 + FINISHING_SPEED_BONUS * speed_ratio - DEPLETION_PENALTY * (DEPLETION_THRESHOLD - speed_ratio)
+    assert reward == pytest.approx(expected)
+
+
+def test_no_depletion_penalty_above_threshold():
+    """Finishing above threshold has no penalty."""
+    reward = compute_reward(
+        prev_progress=0.99, curr_progress=1.0, finish_order=1,
+        finishing_speed=9.1, cruise_speed=13.0,  # 0.7× cruise
+    )
+    speed_ratio = 9.1 / 13.0
+    expected = 0.01 + 10.0 + FINISHING_SPEED_BONUS * speed_ratio
+    assert reward == pytest.approx(expected)
 
 
 def test_no_speed_bonus_mid_race():

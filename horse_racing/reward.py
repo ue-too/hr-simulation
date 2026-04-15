@@ -4,6 +4,8 @@ from __future__ import annotations
 
 _FINISH_BONUS = {1: 10.0, 2: 5.0, 3: 2.0}
 FINISHING_SPEED_BONUS = 5.0
+DEPLETION_PENALTY = 15.0
+DEPLETION_THRESHOLD = 0.6  # speed_ratio below this triggers penalty
 OVERTAKE_BONUS = 0.1
 RAIL_COLLISION_PENALTY = 0.002
 
@@ -34,8 +36,10 @@ def compute_reward(
         reward -= RAIL_COLLISION_PENALTY
     if finish_order is not None:
         reward += _FINISH_BONUS.get(finish_order, 0.0)
-        # Reward finishing fast — paced horses cross at ~0.7× cruise,
-        # depleted horses crawl at ~0.5× cruise. Normalized to [0, ~3.0].
         speed_ratio = finishing_speed / cruise_speed if cruise_speed > 0 else 0.0
+        # Bonus for finishing fast
         reward += FINISHING_SPEED_BONUS * speed_ratio
+        # Penalty for finishing depleted (below threshold)
+        if speed_ratio < DEPLETION_THRESHOLD:
+            reward -= DEPLETION_PENALTY * (DEPLETION_THRESHOLD - speed_ratio)
     return reward
