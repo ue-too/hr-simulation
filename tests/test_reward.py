@@ -12,7 +12,7 @@ from horse_racing.reward import (
     SPEED_BAND_BONUS,
     SPEED_BAND_HIGH,
     SPEED_BAND_LOW,
-    SPEED_BAND_PHASE,
+    SPEED_BAND_PHASE_2,
     _ideal_stamina,
     compute_reward,
 )

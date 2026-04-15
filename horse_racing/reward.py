@@ -10,11 +10,12 @@ OVERTAKE_BONUS = 0.5
 RAIL_COLLISION_PENALTY = 0.002
 PACING_BONUS = 0.002  # per-step reward for stamina above ideal curve
 
-# Speed efficiency: reward cruising in first 70%, free to sprint in final 30%
+# Speed efficiency: cruise band widens gradually toward the finish
 SPEED_BAND_BONUS = 0.003
-SPEED_BAND_LOW = 0.65   # of cruise speed
-SPEED_BAND_HIGH = 0.80  # of cruise speed
-SPEED_BAND_PHASE = 0.70  # reward only applies before this progress
+SPEED_BAND_LOW = 0.65    # of cruise speed (constant floor)
+SPEED_BAND_HIGH = 0.80   # ceiling in early race
+SPEED_BAND_PHASE_1 = 0.70  # band starts widening here
+SPEED_BAND_PHASE_2 = 0.85  # band fully open (free to sprint) here
 
 # Tactical positioning: stalk early, kick late
 POSITION_BONUS = 0.002
@@ -81,13 +82,19 @@ def compute_reward(
     else:
         reward -= PACING_BONUS * (ideal - stamina_frac) / max(ideal, 0.01)
 
-    # --- Speed efficiency band (first 70% only) ---
-    if curr_progress < SPEED_BAND_PHASE:
-        if SPEED_BAND_LOW <= speed_ratio <= SPEED_BAND_HIGH:
+    # --- Speed efficiency band (gradually widens toward finish) ---
+    if curr_progress < SPEED_BAND_PHASE_2:
+        # Ceiling ramps from SPEED_BAND_HIGH (0.80) at phase_1 to 1.0 at phase_2
+        if curr_progress < SPEED_BAND_PHASE_1:
+            ceiling = SPEED_BAND_HIGH
+        else:
+            t = (curr_progress - SPEED_BAND_PHASE_1) / (SPEED_BAND_PHASE_2 - SPEED_BAND_PHASE_1)
+            ceiling = SPEED_BAND_HIGH + t * (1.0 - SPEED_BAND_HIGH)
+
+        if SPEED_BAND_LOW <= speed_ratio <= ceiling:
             reward += SPEED_BAND_BONUS
-        elif speed_ratio > SPEED_BAND_HIGH:
-            # Penalize pushing too hard early
-            overshoot = speed_ratio - SPEED_BAND_HIGH
+        elif speed_ratio > ceiling:
+            overshoot = speed_ratio - ceiling
             reward -= SPEED_BAND_BONUS * min(overshoot / 0.2, 1.0)
 
     # --- Tactical positioning: stalk early, kick late ---
