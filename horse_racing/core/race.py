@@ -44,7 +44,7 @@ def spawn_horses(
     segments: list[TrackSegment],
     horse_count: int = 4,
     attr_factories: dict[int, Callable[[], CoreAttributes]] | None = None,
-    max_spread: float = 0.5,
+    max_spread: float = 3.0,
 ) -> list[Horse]:
     """Spawn horses at the start of the track.
 
@@ -65,10 +65,11 @@ def spawn_horses(
     frame = probe.get_track_frame(start_point)
 
     lane_spacing = max_spread / (count - 1) if count > 1 else 0.0
+    inner_edge = -TRACK_HALF_WIDTH * 0.95  # just off the inside rail
 
     horses: list[Horse] = []
     for i in range(count):
-        lane_offset = (-max_spread / 2 + i * lane_spacing) if count > 1 else 0.0
+        lane_offset = (inner_edge + i * lane_spacing) if count > 1 else 0.0
         pos = start_point + frame.normal * lane_offset
         factory = (attr_factories or {}).get(i, create_default_attributes)
         attrs = factory()
