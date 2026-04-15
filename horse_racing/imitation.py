@@ -35,6 +35,7 @@ def _encode_action(tangential: float, normal: float) -> int:
 def extract_demonstrations(
     recording_path: str | Path,
     player_horse_id: int | None = None,
+    frame_stack: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract (observations, actions) from a race recording.
 
@@ -42,9 +43,11 @@ def extract_demonstrations(
         recording_path: Path to a race JSON recording with obs data.
         player_horse_id: Which horse to extract. If None, auto-detect
             the horse with the most input variation (likely the player).
+        frame_stack: Number of frames to stack. 1 = single frame (141),
+            4 = stacked (564). Builds stacked obs from consecutive frames.
 
     Returns:
-        (obs_array, action_array) where obs is (N, OBS_SIZE) float32
+        (obs_array, action_array) where obs is (N, OBS_SIZE * frame_stack) float32
         and actions is (N,) int64.
     """
     with open(recording_path) as f:
@@ -67,7 +70,8 @@ def extract_demonstrations(
                 best_id = hid
         player_horse_id = best_id
 
-    obs_list = []
+    # Collect raw single-frame obs and actions
+    raw_obs = []
     action_list = []
 
     for frame in frames:
@@ -85,21 +89,37 @@ def extract_demonstrations(
         if not inp:
             continue
 
-        obs_list.append(np.array(horse["obs"], dtype=np.float32))
+        raw_obs.append(np.array(horse["obs"], dtype=np.float32))
         action_list.append(_encode_action(inp["t"], inp["n"]))
 
-    return np.array(obs_list), np.array(action_list, dtype=np.int64)
+    if frame_stack <= 1:
+        return np.array(raw_obs), np.array(action_list, dtype=np.int64)
+
+    # Build frame-stacked observations
+    from .core.observation import OBS_SIZE
+    obs_list = []
+    stacked_actions = []
+    for i in range(len(raw_obs)):
+        stacked = np.zeros(OBS_SIZE * frame_stack, dtype=np.float32)
+        for f in range(frame_stack):
+            src_idx = max(0, i - (frame_stack - 1 - f))
+            stacked[f * OBS_SIZE:(f + 1) * OBS_SIZE] = raw_obs[src_idx]
+        obs_list.append(stacked)
+        stacked_actions.append(action_list[i])
+
+    return np.array(obs_list), np.array(stacked_actions, dtype=np.int64)
 
 
 def extract_from_multiple(
     recording_paths: list[str | Path],
     player_horse_id: int | None = None,
+    frame_stack: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract and concatenate demonstrations from multiple recordings."""
     all_obs = []
     all_actions = []
     for path in recording_paths:
-        obs, actions = extract_demonstrations(path, player_horse_id)
+        obs, actions = extract_demonstrations(path, player_horse_id, frame_stack)
         if len(obs) > 0:
             all_obs.append(obs)
             all_actions.append(actions)
