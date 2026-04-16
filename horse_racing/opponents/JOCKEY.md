@@ -224,6 +224,12 @@ toward the archetype lane over `settle_ticks` instead of snapping.
 
 Without coupling, every horse can hold **full cruise tangential** while **steering** sideways, so the field stays **abreast** on long straights. In **CRUISE** and **SETTLING**, tangential is adjusted when the horse is far from its current lane target. The geometric term is `min(max, excess × scale × off_lane_decel_scale)`; then **`off_lane_accel_relief`** adds a small amount of forward input back (capped so it never exceeds the cruise tangential before lane logic). Together, **`off_lane_decel_scale`** encodes *prefer to coast for lane* vs *stay on the gas*, and **`off_lane_accel_relief`** encodes *push through* while converging. **PASSING** and **KICK** are unchanged.
 
+## Automated knob checks (pytest)
+
+See `tests/test_bt_knobs.py`: it asserts that changing `BTConfig` fields moves
+cruise speed, lane rating, utility scores, pass block rules, defense overlay,
+and kick blocking in the expected direction. Run `uv run pytest tests/test_bt_knobs.py -v`.
+
 ## Systematic tuning (Python batch runner)
 
 Use `scripts/tune_bt.py` to run many headless races and print aggregate **win
