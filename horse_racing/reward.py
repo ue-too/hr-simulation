@@ -9,6 +9,7 @@ DEPLETION_THRESHOLD = 0.6  # speed_ratio below this triggers penalty
 OVERTAKE_BONUS = 0.5
 RAIL_COLLISION_PENALTY = 0.002
 PACING_BONUS = 0.002  # per-step reward for stamina above ideal curve
+BOXING_PENALTY = 0.004  # per-step penalty for being stuck behind a slower horse
 
 # Speed efficiency: reward cruising in first 70%, free to sprint in final 30%
 SPEED_BAND_BONUS = 0.003
@@ -30,7 +31,7 @@ def _ideal_stamina(progress: float) -> float:
 
     Linear ramp: 1.0 at start → 0.05 at finish.
     """
-    return max(0.0, 1.0 - 0.80 * progress)
+    return max(0.0, 1.0 - 0.95 * progress)
 
 
 def compute_reward(
@@ -49,6 +50,7 @@ def compute_reward(
     curr_tang: float = 0.0,
     prev_norm: float = 0.0,
     curr_norm: float = 0.0,
+    boxed: bool = False,
 ) -> float:
     """Compute reward for one step.
 
@@ -73,6 +75,8 @@ def compute_reward(
     reward += OVERTAKE_BONUS * overtakes
     if rail_contact:
         reward -= RAIL_COLLISION_PENALTY
+    if boxed:
+        reward -= BOXING_PENALTY
 
     # --- Per-step pacing: stamina above ideal curve ---
     ideal = _ideal_stamina(curr_progress)

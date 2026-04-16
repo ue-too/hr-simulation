@@ -132,6 +132,26 @@ class HorseRacingSingleEnv(gym.Env):
         cruise = agent_horse.base_attributes.cruise_speed
         stamina_frac = agent_horse.current_stamina / agent_horse.base_attributes.max_stamina
         speed_ratio = agent_horse.tangential_vel / cruise if cruise > 0 else 0.0
+
+        # Detect "boxing": opponent directly ahead in same lane, moving slower
+        boxed = False
+        agent_lat = agent_horse.navigator.lateral_offset(agent_horse.pos)
+        for h in self._race.state.horses:
+            if h.id == self._agent_id or h.finished:
+                continue
+            progress_delta = h.track_progress - agent_horse.track_progress
+            # Opponent must be slightly ahead (not too far, not behind)
+            if not (0.0 < progress_delta < 0.02):
+                continue
+            # Similar lateral position (within one horse-width)
+            opp_lat = h.navigator.lateral_offset(h.pos)
+            if abs(agent_lat - opp_lat) > 1.0:
+                continue
+            # Opponent moving slower (agent wants to pass but can't)
+            if h.tangential_vel >= agent_horse.tangential_vel:
+                continue
+            boxed = True
+            break
         reward = compute_reward(
             self._prev_progress, curr_progress, agent_horse.finish_order,
             finishing_speed=agent_horse.tangential_vel,
@@ -146,6 +166,7 @@ class HorseRacingSingleEnv(gym.Env):
             curr_tang=tang,
             prev_norm=self._prev_norm,
             curr_norm=norm,
+            boxed=boxed,
         )
         self._prev_progress = curr_progress
         self._prev_rank = curr_rank
