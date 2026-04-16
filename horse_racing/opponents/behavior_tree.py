@@ -72,6 +72,9 @@ class BTConfig:
     w_pass: float = 1.0
     w_kick: float = 1.0
     w_draft: float = 1.0
+    off_lane_penalty_start: float = 0.06
+    off_lane_tang_penalty_scale: float = 0.5
+    off_lane_tang_penalty_max: float = 0.18
 
 
 # ============================================================
@@ -84,6 +87,8 @@ def archetype_stalker() -> BTConfig:
         target_lane=-0.60,
         lateral_aggression=0.5,
         w_draft=1.3,
+        off_lane_penalty_start=0.06,
+        off_lane_tang_penalty_max=0.16,
     )
 
 
@@ -103,6 +108,9 @@ def archetype_front_runner() -> BTConfig:
         w_pass=1.3,
         w_kick=1.2,
         w_draft=0.5,
+        off_lane_penalty_start=0.10,
+        off_lane_tang_penalty_scale=0.35,
+        off_lane_tang_penalty_max=0.10,
     )
 
 
@@ -122,6 +130,9 @@ def archetype_closer() -> BTConfig:
         w_pass=0.7,
         w_kick=1.5,
         w_draft=1.5,
+        off_lane_penalty_start=0.04,
+        off_lane_tang_penalty_scale=0.65,
+        off_lane_tang_penalty_max=0.24,
     )
 
 
@@ -141,6 +152,9 @@ def archetype_speedball() -> BTConfig:
         w_pass=1.5,
         w_kick=0.9,
         w_draft=0.6,
+        off_lane_penalty_start=0.08,
+        off_lane_tang_penalty_scale=0.38,
+        off_lane_tang_penalty_max=0.10,
     )
 
 
@@ -158,6 +172,8 @@ def archetype_steady() -> BTConfig:
         w_pass=0.5,
         w_kick=0.8,
         w_draft=1.0,
+        off_lane_penalty_start=0.07,
+        off_lane_tang_penalty_max=0.14,
     )
 
 
@@ -441,15 +457,33 @@ class BehaviorTreeStrategy(Strategy):
             tang = min(tang, 0.25)
         return tang
 
+    def _rate_for_lane_convergence(
+        self, tang: float, lateral_norm: float, target_lane: float
+    ) -> float:
+        """Subtract tangential when far from lane so the field does not stay abreast."""
+        cfg = self._cfg
+        err = abs(lateral_norm - target_lane)
+        if err <= cfg.off_lane_penalty_start:
+            return tang
+        excess = err - cfg.off_lane_penalty_start
+        penalty = min(
+            cfg.off_lane_tang_penalty_max,
+            excess * cfg.off_lane_tang_penalty_scale,
+        )
+        return max(0.0, tang - penalty)
+
     # -------- State actions --------
 
     def _do_cruise(
         self, speed_ratio: float, stamina_frac: float, lateral_norm: float
     ) -> "InputState":
         from ..core.types import InputState
+        cfg = self._cfg
+        tang = self._cruise_speed(speed_ratio, stamina_frac)
+        tang = self._rate_for_lane_convergence(tang, lateral_norm, cfg.target_lane)
         return InputState(
-            self._cruise_speed(speed_ratio, stamina_frac),
-            self._steer_to_lane(lateral_norm, self._cfg.target_lane),
+            tang,
+            self._steer_to_lane(lateral_norm, cfg.target_lane),
         )
 
     def _do_pass(self, stamina_frac: float) -> "InputState":
@@ -471,7 +505,9 @@ class BehaviorTreeStrategy(Strategy):
         cfg = self._cfg
         t = min(self._state_ticks / cfg.settle_ticks, 1.0)
         target = self._settle_from_lane + (cfg.target_lane - self._settle_from_lane) * t
+        tang = self._cruise_speed(speed_ratio, stamina_frac)
+        tang = self._rate_for_lane_convergence(tang, lateral_norm, target)
         return InputState(
-            self._cruise_speed(speed_ratio, stamina_frac),
+            tang,
             self._steer_to_lane(lateral_norm, target),
         )
