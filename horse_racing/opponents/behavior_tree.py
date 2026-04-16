@@ -75,6 +75,8 @@ class BTConfig:
     off_lane_penalty_start: float = 0.06
     off_lane_tang_penalty_scale: float = 0.5
     off_lane_tang_penalty_max: float = 0.18
+    off_lane_decel_scale: float = 1.0
+    off_lane_accel_relief: float = 0.0
 
 
 # ============================================================
@@ -89,6 +91,8 @@ def archetype_stalker() -> BTConfig:
         w_draft=1.3,
         off_lane_penalty_start=0.06,
         off_lane_tang_penalty_max=0.16,
+        off_lane_decel_scale=1.0,
+        off_lane_accel_relief=0.03,
     )
 
 
@@ -111,6 +115,8 @@ def archetype_front_runner() -> BTConfig:
         off_lane_penalty_start=0.10,
         off_lane_tang_penalty_scale=0.35,
         off_lane_tang_penalty_max=0.10,
+        off_lane_decel_scale=0.75,
+        off_lane_accel_relief=0.07,
     )
 
 
@@ -133,6 +139,8 @@ def archetype_closer() -> BTConfig:
         off_lane_penalty_start=0.04,
         off_lane_tang_penalty_scale=0.65,
         off_lane_tang_penalty_max=0.24,
+        off_lane_decel_scale=1.25,
+        off_lane_accel_relief=0.0,
     )
 
 
@@ -155,6 +163,8 @@ def archetype_speedball() -> BTConfig:
         off_lane_penalty_start=0.08,
         off_lane_tang_penalty_scale=0.38,
         off_lane_tang_penalty_max=0.10,
+        off_lane_decel_scale=0.7,
+        off_lane_accel_relief=0.09,
     )
 
 
@@ -174,6 +184,8 @@ def archetype_steady() -> BTConfig:
         w_draft=1.0,
         off_lane_penalty_start=0.07,
         off_lane_tang_penalty_max=0.14,
+        off_lane_decel_scale=1.05,
+        off_lane_accel_relief=0.02,
     )
 
 
@@ -466,11 +478,10 @@ class BehaviorTreeStrategy(Strategy):
         if err <= cfg.off_lane_penalty_start:
             return tang
         excess = err - cfg.off_lane_penalty_start
-        penalty = min(
-            cfg.off_lane_tang_penalty_max,
-            excess * cfg.off_lane_tang_penalty_scale,
-        )
-        return max(0.0, tang - penalty)
+        raw = excess * cfg.off_lane_tang_penalty_scale * cfg.off_lane_decel_scale
+        penalty = min(cfg.off_lane_tang_penalty_max, raw)
+        out = tang - penalty + cfg.off_lane_accel_relief
+        return max(0.0, min(tang, out))
 
     # -------- State actions --------
 

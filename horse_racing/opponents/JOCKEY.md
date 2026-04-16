@@ -217,10 +217,12 @@ toward the archetype lane over `settle_ticks` instead of snapping.
 | `off_lane_penalty_start` | 0.06 | If `\|lateral − target_lane\|` exceeds this, tangential is reduced (“rating” while changing lanes). |
 | `off_lane_tang_penalty_scale` | 0.5 | Extra lateral error beyond start × this = tangential penalty, capped below. |
 | `off_lane_tang_penalty_max` | 0.18 | Max tangential subtracted during lane convergence (CRUISE / SETTLING only). |
+| `off_lane_decel_scale` | 1.0 | Multiplies geometric lane penalty: **&lt;1** = less coasting (momentum), **&gt;1** = more willingness to decelerate into the lane. |
+| `off_lane_accel_relief` | 0.0 | Add-back to tangential after penalty (capped at cruise tang): **&gt;0** = “accelerate-through” lean while shifting. |
 
 ### Lane convergence (“rating”)
 
-Without coupling, every horse can hold **full cruise tangential** while **steering** sideways, so the field stays **abreast** on long straights. In **CRUISE** and **SETTLING**, tangential is lowered when the horse is far from its current lane target: horses **ease forward** while sliding to `target_lane`. **PASSING** and **KICK** are unchanged (pass maneuver and sprint stay aggressive). Archetypes differ: e.g. **closer** rates more to reach a wide lane early; **front-runner** barely rates so the rail horse keeps pressure.
+Without coupling, every horse can hold **full cruise tangential** while **steering** sideways, so the field stays **abreast** on long straights. In **CRUISE** and **SETTLING**, tangential is adjusted when the horse is far from its current lane target. The geometric term is `min(max, excess × scale × off_lane_decel_scale)`; then **`off_lane_accel_relief`** adds a small amount of forward input back (capped so it never exceeds the cruise tangential before lane logic). Together, **`off_lane_decel_scale`** encodes *prefer to coast for lane* vs *stay on the gas*, and **`off_lane_accel_relief`** encodes *push through* while converging. **PASSING** and **KICK** are unchanged.
 
 ## Systematic tuning (Python batch runner)
 
