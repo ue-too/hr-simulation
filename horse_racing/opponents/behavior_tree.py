@@ -58,6 +58,69 @@ class BTConfig:
     pass_cooldown_ticks: int = 80
 
 
+# ============================================================
+# Archetypes — presets for different racing styles.
+# Each returns a BTConfig tuned for a specific role.
+# ============================================================
+
+def archetype_stalker() -> BTConfig:
+    """Classic stalker: sits 2nd-4th, kicks at the quarter pole. Balanced."""
+    return BTConfig()
+
+
+def archetype_front_runner() -> BTConfig:
+    """Front-runner: pushes to the lead early, tries to hold. May fade."""
+    return BTConfig(
+        cruise_low=0.65,        # ~13 m/s — faster cruise
+        cruise_high=0.80,       # ~16 m/s
+        kick_phase=0.65,        # earlier kick
+        block_min_slowness=0.01,  # more aggressive passing
+        pass_cooldown_ticks=40,
+    )
+
+
+def archetype_closer() -> BTConfig:
+    """Closer: hangs back, makes dramatic late run."""
+    return BTConfig(
+        cruise_low=0.45,        # ~9 m/s — very conservative
+        cruise_high=0.60,       # ~12 m/s
+        kick_phase=0.85,        # late kick
+        conserve_threshold=0.50, # holds back longer
+    )
+
+
+def archetype_speedball() -> BTConfig:
+    """Aggressive passer: constantly tries to move up through the field."""
+    return BTConfig(
+        cruise_low=0.60,
+        cruise_high=0.75,
+        kick_phase=0.70,
+        block_min_slowness=0.005, # passes on any slower horse
+        pass_min_ticks=30,
+        pass_cooldown_ticks=30,
+    )
+
+
+def archetype_steady() -> BTConfig:
+    """Steady cruiser: narrow band, mid-pack finisher. Rarely passes."""
+    return BTConfig(
+        cruise_low=0.58,
+        cruise_high=0.68,
+        kick_phase=0.80,
+        block_min_slowness=0.08, # only passes much-slower horses
+        pass_cooldown_ticks=150,
+    )
+
+
+ARCHETYPES = {
+    "stalker": archetype_stalker,
+    "front-runner": archetype_front_runner,
+    "closer": archetype_closer,
+    "speedball": archetype_speedball,
+    "steady": archetype_steady,
+}
+
+
 class BehaviorTreeStrategy(Strategy):
     """Reactive BT jockey with committed maneuvers.
 
