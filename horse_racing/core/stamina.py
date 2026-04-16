@@ -32,6 +32,7 @@ def drain_stamina(
     inp: InputState,
     frame: TrackFrame,
     drain_scale: float = 1.0,
+    draft_bonus: float = 0.0,
 ) -> None:
     """Drain stamina based on current effort. Mutates horse.current_stamina."""
     drain = 0.0
@@ -53,6 +54,11 @@ def drain_stamina(
 
     drain += abs(horse.tangential_vel) * SPEED_DRAIN_RATE
     drain += abs(horse.normal_vel) * LATERAL_VELOCITY_DRAIN_RATE
+
+    # Drafting: reduced effort when tucked behind another horse
+    if draft_bonus > 0 and abs(inp.normal) < 0.3:
+        drain *= (1.0 - draft_bonus)
+
     drain *= attrs.drain_rate_mult
     drain *= drain_scale
     horse.last_drain = drain

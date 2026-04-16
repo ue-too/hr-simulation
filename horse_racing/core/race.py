@@ -150,7 +150,8 @@ class Race:
             if not h.finished:
                 frame = h.navigator.get_track_frame(h.pos)
                 horse_input = inputs.get(h.id, zero_input)
-                drain_stamina(h, h.effective_attributes, horse_input, frame, self._drain_scale)
+                draft_bonus = self._compute_draft_bonus(h)
+                drain_stamina(h, h.effective_attributes, horse_input, frame, self._drain_scale, draft_bonus)
 
         for h in self.state.horses:
             if not h.finished and h.track_progress >= 1.0:
@@ -170,6 +171,21 @@ class Race:
                 self.state.phase = "finished"
 
         self.state.tick += 1
+
+    def _compute_draft_bonus(self, horse: Horse) -> float:
+        self_lateral = horse.navigator.lateral_offset(horse.pos)
+        for other in self.state.horses:
+            if other.id == horse.id or other.finished:
+                continue
+            progress_delta = other.track_progress - horse.track_progress
+            if progress_delta <= 0.005 or progress_delta >= 0.05:
+                continue
+            other_lateral = other.navigator.lateral_offset(other.pos)
+            if abs(other_lateral - self_lateral) > 1.0:
+                continue
+            if other.tangential_vel >= horse.tangential_vel - 0.5:
+                return 0.15
+        return 0.0
 
     def reset(self) -> None:
         self.state = RaceState(

@@ -1,4 +1,4 @@
-"""Behavior-tree opponent: reactive, tactical jockey with racing knowledge.
+"""Utility-scored opponent: reactive, tactical jockey with racing knowledge.
 
 Uses the same observation vector the RL agent sees. Holds per-horse state
 so maneuvers (passing, kicking) commit for multiple ticks instead of
@@ -9,8 +9,17 @@ Observation layout (from core/observation.py):
 - [1]     tangential_vel / max_speed
 - [3]     stamina / max_stamina
 - [15]    lateral_offset / TRACK_HALF_WIDTH   (negative = toward inside)
-- [26+]   23× opponent slots of 5 values:
+- [26+]   23x opponent slots of 5 values:
     [0] active, [1] progress_delta, [2] tvel_delta, [3] norm_offset, [4] nvel_delta
+
+States: CRUISE / PASSING / KICK / SETTLING.
+Each tick the utility selector scores CRUISE, PASS, and KICK; the highest
+wins (subject to commitment windows and transition budgets). A defensive
+overlay nudges outputs when an opponent threatens to pass, without adding
+a dedicated state.
+
+Archetypes are expressed as weight profiles over the scoring functions
+plus a few direct constants (target lane, cruise band, kick timing).
 """
 
 from __future__ import annotations
@@ -39,53 +48,80 @@ _OPP_BASE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE  # 26
 
 @dataclass
 class BTConfig:
-    """Tunable parameters for the BT opponent."""
-    # obs speed_ratio is tvel/max_speed (20). Natural cruise ~13 m/s → ratio ~0.65.
-    # Band centered on natural cruise, wide enough to avoid constant push/coast flip.
-    cruise_low: float = 0.55    # ~11 m/s
-    cruise_high: float = 0.70   # ~14 m/s
+    """Tunable parameters for the utility-scored opponent."""
+    cruise_low: float = 0.55
+    cruise_high: float = 0.70
+    target_lane: float = -0.80
+    lateral_aggression: float = 0.6
     kick_phase: float = 0.75
+    kick_early_margin: float = 0.10
+    kick_late_cap: float = 0.92
     block_progress_max: float = 0.03
     block_lateral_tol: float = 0.15
-    # Blocker must be meaningfully slower (not just "slower by anything")
     block_min_slowness: float = 0.03
     conserve_threshold: float = 0.30
-    # Passing commitment — minimum ticks to stay in pass maneuver
     pass_min_ticks: int = 40
-    # Done passing once this far ahead in lateral offset (normalized)
     pass_clear_lateral: float = 0.25
-    # Cooldown ticks after finishing a pass before another can start
     pass_cooldown_ticks: int = 80
+    settle_ticks: int = 40
+    transition_min_ticks: int = 30
+    defend_on_score: float = 0.6
+    defend_off_score: float = 0.3
+    defend_tang_min: float = 0.5
+    defend_drift: float = 0.15
+    w_pass: float = 1.0
+    w_kick: float = 1.0
+    w_draft: float = 1.0
 
 
 # ============================================================
-# Archetypes — presets for different racing styles.
-# Each returns a BTConfig tuned for a specific role.
+# Archetypes — weight profiles for different racing styles.
 # ============================================================
 
 def archetype_stalker() -> BTConfig:
     """Classic stalker: sits 2nd-4th, kicks at the quarter pole. Balanced."""
-    return BTConfig()
+    return BTConfig(
+        target_lane=-0.60,
+        lateral_aggression=0.5,
+        w_draft=1.3,
+    )
 
 
 def archetype_front_runner() -> BTConfig:
     """Front-runner: pushes to the lead early, tries to hold. May fade."""
     return BTConfig(
-        cruise_low=0.65,        # ~13 m/s — faster cruise
-        cruise_high=0.80,       # ~16 m/s
-        kick_phase=0.65,        # earlier kick
-        block_min_slowness=0.01,  # more aggressive passing
+        cruise_low=0.72,
+        cruise_high=0.85,
+        target_lane=-0.80,
+        lateral_aggression=0.8,
+        kick_phase=0.65,
+        kick_early_margin=0.05,
+        kick_late_cap=0.88,
+        block_min_slowness=0.01,
         pass_cooldown_ticks=40,
+        defend_drift=0.20,
+        w_pass=1.3,
+        w_kick=1.2,
+        w_draft=0.5,
     )
 
 
 def archetype_closer() -> BTConfig:
     """Closer: hangs back, makes dramatic late run."""
     return BTConfig(
-        cruise_low=0.45,        # ~9 m/s — very conservative
-        cruise_high=0.60,       # ~12 m/s
-        kick_phase=0.85,        # late kick
-        conserve_threshold=0.50, # holds back longer
+        cruise_low=0.40,
+        cruise_high=0.52,
+        target_lane=-0.30,
+        lateral_aggression=0.4,
+        kick_phase=0.85,
+        kick_early_margin=0.05,
+        kick_late_cap=0.93,
+        conserve_threshold=0.50,
+        settle_ticks=50,
+        defend_on_score=0.8,
+        w_pass=0.7,
+        w_kick=1.5,
+        w_draft=1.5,
     )
 
 
@@ -94,10 +130,17 @@ def archetype_speedball() -> BTConfig:
     return BTConfig(
         cruise_low=0.60,
         cruise_high=0.75,
+        target_lane=-0.20,
+        lateral_aggression=0.8,
         kick_phase=0.70,
-        block_min_slowness=0.005, # passes on any slower horse
+        kick_early_margin=0.10,
+        kick_late_cap=0.88,
+        block_min_slowness=0.005,
         pass_min_ticks=30,
         pass_cooldown_ticks=30,
+        w_pass=1.5,
+        w_kick=0.9,
+        w_draft=0.6,
     )
 
 
@@ -106,9 +149,15 @@ def archetype_steady() -> BTConfig:
     return BTConfig(
         cruise_low=0.58,
         cruise_high=0.68,
+        target_lane=-0.70,
+        lateral_aggression=0.5,
         kick_phase=0.80,
-        block_min_slowness=0.08, # only passes much-slower horses
+        block_min_slowness=0.08,
         pass_cooldown_ticks=150,
+        defend_on_score=0.9,
+        w_pass=0.5,
+        w_kick=0.8,
+        w_draft=1.0,
     )
 
 
@@ -122,17 +171,19 @@ ARCHETYPES = {
 
 
 class BehaviorTreeStrategy(Strategy):
-    """Reactive BT jockey with committed maneuvers.
+    """Utility-scored jockey with committed maneuvers and reactive overlays.
 
     States:
-    - CRUISE: hold inside line in speed band
-    - PASSING: swung wide to overtake a blocker — commits for pass_min_ticks
-    - KICK: final sprint, pull inside unless blocked
+    - CRUISE: maintain speed band; steer toward archetype lane.
+    - PASSING: commit wide + extra tangential (committed for pass_min_ticks).
+    - KICK: max tangential sprint, pull inside unless blocked.
+    - SETTLING: after PASSING, interpolate lane back toward archetype target.
     """
 
     STATE_CRUISE = 0
     STATE_PASSING = 1
     STATE_KICK = 2
+    STATE_SETTLING = 3
 
     def __init__(
         self,
@@ -144,8 +195,12 @@ class BehaviorTreeStrategy(Strategy):
         self._horse_id = horse_id
         self._cfg = config or BTConfig()
         self._state = self.STATE_CRUISE
-        self._state_ticks = 0  # ticks spent in current state
-        self._cooldown_ticks = 0  # remaining cooldown ticks after a pass
+        self._state_ticks = 0
+        self._cooldown_ticks = 0
+        self._global_tick = 0
+        self._last_transition_tick = -999
+        self._defending = False
+        self._settle_from_lane = 0.0
 
     def act(self, progress: float) -> int:
         return 0
@@ -161,90 +216,103 @@ class BehaviorTreeStrategy(Strategy):
         speed_ratio = float(obs[1])
         stamina_frac = float(obs[3])
         lateral_norm = float(obs[15])
+        self._global_tick += 1
 
-        # Transition to KICK when past kick phase (absorbing)
-        if progress >= cfg.kick_phase:
-            if self._state != self.STATE_KICK:
-                self._state = self.STATE_KICK
-                self._state_ticks = 0
-
-        # State machine
+        # KICK is absorbing
         if self._state == self.STATE_KICK:
             self._state_ticks += 1
-            return self._do_kick(obs, lateral_norm)
+            return self._apply_defense(
+                self._do_kick(obs, lateral_norm), obs, stamina_frac
+            )
 
+        # PASSING: committed for pass_min_ticks
         if self._state == self.STATE_PASSING:
             self._state_ticks += 1
-            # Exit passing when: committed ticks elapsed AND clear of blocker
+            if progress >= cfg.kick_late_cap:
+                self._transition(self.STATE_KICK)
+                return self._apply_defense(
+                    self._do_kick(obs, lateral_norm), obs, stamina_frac
+                )
             if self._state_ticks >= cfg.pass_min_ticks and not self._still_blocked(obs):
-                self._state = self.STATE_CRUISE
-                self._state_ticks = 0
+                self._transition(self.STATE_SETTLING)
+                self._settle_from_lane = lateral_norm
+            else:
+                return self._apply_defense(
+                    self._do_pass(stamina_frac), obs, stamina_frac
+                )
+
+        # SETTLING: interpolate lane position back toward archetype target
+        if self._state == self.STATE_SETTLING:
+            self._state_ticks += 1
+            if progress >= cfg.kick_late_cap:
+                self._transition(self.STATE_KICK)
+                return self._apply_defense(
+                    self._do_kick(obs, lateral_norm), obs, stamina_frac
+                )
+            if self._state_ticks >= cfg.settle_ticks:
+                self._transition(self.STATE_CRUISE)
                 self._cooldown_ticks = cfg.pass_cooldown_ticks
             else:
-                return self._do_pass(stamina_frac)
+                return self._apply_defense(
+                    self._do_settle(speed_ratio, stamina_frac, lateral_norm),
+                    obs, stamina_frac,
+                )
 
-        # CRUISE state — check for blocker to switch to passing
-        if self._state == self.STATE_CRUISE:
-            if self._cooldown_ticks > 0:
-                self._cooldown_ticks -= 1
-            elif self._is_blocked(obs):
-                self._state = self.STATE_PASSING
-                self._state_ticks = 0
-                return self._do_pass(stamina_frac)
-            self._state_ticks += 1
-            return self._do_cruise(speed_ratio, stamina_frac, lateral_norm)
+        # CRUISE: utility-based action selection
+        if self._cooldown_ticks > 0:
+            self._cooldown_ticks -= 1
 
-        # Fallback
-        return InputState(0.25, -0.25)
+        can_transition = (
+            self._global_tick - self._last_transition_tick >= cfg.transition_min_ticks
+        )
 
-    # -------- Actions per state --------
+        kick_u = self._score_kick(progress, stamina_frac)
+        pass_u = (
+            self._score_pass(obs)
+            if (self._cooldown_ticks <= 0 and can_transition)
+            else -10
+        )
+        cruise_u = self._score_cruise(obs, stamina_frac)
 
-    def _do_cruise(self, speed_ratio: float, stamina_frac: float, lateral_norm: float) -> "InputState":
-        from ..core.types import InputState
+        if kick_u >= cruise_u and kick_u >= pass_u and kick_u > 0:
+            self._transition(self.STATE_KICK)
+            return self._apply_defense(
+                self._do_kick(obs, lateral_norm), obs, stamina_frac
+            )
+
+        if pass_u > cruise_u and pass_u > 0 and can_transition:
+            self._transition(self.STATE_PASSING)
+            return self._apply_defense(
+                self._do_pass(stamina_frac), obs, stamina_frac
+            )
+
+        self._state_ticks += 1
+        return self._apply_defense(
+            self._do_cruise(speed_ratio, stamina_frac, lateral_norm),
+            obs, stamina_frac,
+        )
+
+    # -------- State transitions --------
+
+    def _transition(self, new_state: int) -> None:
+        self._state = new_state
+        self._state_ticks = 0
+        self._last_transition_tick = self._global_tick
+
+    # -------- Utility scoring --------
+
+    def _score_cruise(self, obs: "np.ndarray", stamina_frac: float) -> float:
+        score = 1.0
+        if self._is_drafting(obs):
+            score += (0.2 + (1.0 - stamina_frac) * 0.3) * self._cfg.w_draft
+        return score
+
+    def _score_pass(self, obs: "np.ndarray") -> float:
         cfg = self._cfg
-        # Default cruise effort is 0.25 (physics settles near cruise speed).
-        # Use a wider tolerance so minor overshoots don't trigger coast.
-        if speed_ratio < cfg.cruise_low - 0.05:
-            tang = 0.5   # gentle push
-        elif speed_ratio > cfg.cruise_high + 0.05:
-            tang = 0.0   # coast
-        else:
-            tang = 0.25  # maintain (most of the time)
-        if stamina_frac < cfg.conserve_threshold:
-            tang = min(tang, 0.25)
-        # Pull to inside rail. lateral_norm near -0.95 = inside rail.
-        if lateral_norm > -0.80:
-            normal = -0.5
-        else:
-            normal = -0.25
-        return InputState(tang, normal)
-
-    def _do_pass(self, stamina_frac: float) -> "InputState":
-        from ..core.types import InputState
-        cfg = self._cfg
-        tang = 0.75 if stamina_frac > cfg.conserve_threshold else 0.5
-        # Commit wide — stay there until maneuver ends
-        return InputState(tang, 0.5)
-
-    def _do_kick(self, obs: "np.ndarray", lateral_norm: float) -> "InputState":
-        from ..core.types import InputState
-        if self._is_blocked(obs):
-            return InputState(1.0, 0.5)
-        # Pull to inside line for optimal path
-        if lateral_norm > -0.80:
-            normal = -0.5
-        else:
-            normal = -0.25
-        return InputState(1.0, normal)
-
-    # -------- Perception helpers --------
-
-    def _is_blocked(self, obs: "np.ndarray") -> bool:
-        """Opponent directly ahead in same lane, moving slower."""
-        cfg = self._cfg
+        best = -10.0
         for s in range(OPPONENT_SLOTS):
             base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
-            if obs[base + 0] < 0.5:
+            if obs[base] < 0.5:
                 continue
             progress_delta = obs[base + 1]
             tvel_delta = obs[base + 2]
@@ -253,23 +321,157 @@ class BehaviorTreeStrategy(Strategy):
                 continue
             if abs(normal_offset) > cfg.block_lateral_tol:
                 continue
-            # Blocker must be meaningfully slower, not just slower by epsilon
             if tvel_delta >= -cfg.block_min_slowness:
                 continue
-            return True
+            severity = abs(tvel_delta)
+            lateral_cost = abs(normal_offset)
+            best = max(best, 0.3 + severity * 5.0 - lateral_cost * 2.0)
+        return -10.0 if best < 0 else best * cfg.w_pass
+
+    def _score_kick(self, progress: float, stamina_frac: float) -> float:
+        cfg = self._cfg
+        remaining = 1.0 - progress
+        early_phase = cfg.kick_phase - cfg.kick_early_margin
+        late_phase = min(cfg.kick_phase + cfg.kick_early_margin, cfg.kick_late_cap)
+        if progress < early_phase:
+            return -10.0
+        if progress >= late_phase:
+            return 10.0
+        sustainability = stamina_frac - remaining * 1.5
+        if sustainability <= 0:
+            return -1.0
+        return (0.5 + sustainability * 3.0) * cfg.w_kick
+
+    # -------- Perception helpers --------
+
+    def _is_drafting(self, obs: "np.ndarray") -> bool:
+        for s in range(OPPONENT_SLOTS):
+            base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
+            if obs[base] < 0.5:
+                continue
+            if (obs[base + 1] > 0.01 and obs[base + 1] < 0.05
+                    and abs(obs[base + 3]) < 0.10
+                    and obs[base + 2] >= -0.02):
+                return True
         return False
 
     def _still_blocked(self, obs: "np.ndarray") -> bool:
-        """Looser check during passing — any opponent at similar progress?"""
         cfg = self._cfg
         for s in range(OPPONENT_SLOTS):
             base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
-            if obs[base + 0] < 0.5:
+            if obs[base] < 0.5:
                 continue
             progress_delta = obs[base + 1]
             normal_offset = obs[base + 3]
-            # Still blocked if an opponent is level-to-just-ahead on the inside
-            if -0.01 < progress_delta < cfg.block_progress_max:
-                if normal_offset < -cfg.pass_clear_lateral:
-                    return True
+            if (-0.01 < progress_delta < cfg.block_progress_max
+                    and normal_offset < -cfg.pass_clear_lateral):
+                return True
         return False
+
+    def _is_blocked_during_kick(self, obs: "np.ndarray") -> bool:
+        cfg = self._cfg
+        for s in range(OPPONENT_SLOTS):
+            base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
+            if obs[base] < 0.5:
+                continue
+            if (obs[base + 1] > 0 and obs[base + 1] < cfg.block_progress_max
+                    and abs(obs[base + 3]) < cfg.block_lateral_tol
+                    and obs[base + 2] < -cfg.block_min_slowness):
+                return True
+        return False
+
+    def _compute_threat_score(self, obs: "np.ndarray") -> float:
+        max_threat = 0.0
+        for s in range(OPPONENT_SLOTS):
+            base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
+            if obs[base] < 0.5:
+                continue
+            pd = obs[base + 1]
+            tv = obs[base + 2]
+            no = obs[base + 3]
+            if -0.03 <= pd < 0 and tv > 0.03 and no > 0.05:
+                threat = tv * 5.0 + (1.0 - abs(pd) / 0.03) * 0.3
+                max_threat = max(max_threat, threat)
+        return max_threat
+
+    # -------- Defensive overlay --------
+
+    def _apply_defense(
+        self,
+        inp: "InputState",
+        obs: "np.ndarray",
+        stamina_frac: float,
+    ) -> "InputState":
+        from ..core.types import InputState
+
+        cfg = self._cfg
+        threat = self._compute_threat_score(obs)
+        if not self._defending and threat > cfg.defend_on_score:
+            self._defending = True
+        elif self._defending and threat < cfg.defend_off_score:
+            self._defending = False
+        if not self._defending or stamina_frac < 0.30:
+            return inp
+        return InputState(
+            max(inp.tangential, cfg.defend_tang_min),
+            inp.normal + cfg.defend_drift,
+        )
+
+    # -------- Shared steering / speed helpers --------
+
+    def _steer_to_lane(self, lateral_norm: float, target_lane: float) -> float:
+        err = lateral_norm - target_lane
+        if abs(err) < 0.05:
+            return 0.0
+        return (
+            -0.5 * self._cfg.lateral_aggression
+            if err > 0
+            else 0.5 * self._cfg.lateral_aggression
+        )
+
+    def _cruise_speed(self, speed_ratio: float, stamina_frac: float) -> float:
+        cfg = self._cfg
+        if speed_ratio < cfg.cruise_low - 0.05:
+            tang = 0.5
+        elif speed_ratio > cfg.cruise_high + 0.05:
+            tang = 0.0
+        else:
+            tang = 0.25
+        if stamina_frac < cfg.conserve_threshold:
+            tang = min(tang, 0.25)
+        return tang
+
+    # -------- State actions --------
+
+    def _do_cruise(
+        self, speed_ratio: float, stamina_frac: float, lateral_norm: float
+    ) -> "InputState":
+        from ..core.types import InputState
+        return InputState(
+            self._cruise_speed(speed_ratio, stamina_frac),
+            self._steer_to_lane(lateral_norm, self._cfg.target_lane),
+        )
+
+    def _do_pass(self, stamina_frac: float) -> "InputState":
+        from ..core.types import InputState
+        tang = 0.75 if stamina_frac > self._cfg.conserve_threshold else 0.5
+        return InputState(tang, 0.5)
+
+    def _do_kick(self, obs: "np.ndarray", lateral_norm: float) -> "InputState":
+        from ..core.types import InputState
+        if self._is_blocked_during_kick(obs):
+            return InputState(1.0, 0.5)
+        normal = -0.5 if lateral_norm > -0.80 else -0.25
+        return InputState(1.0, normal)
+
+    def _do_settle(
+        self, speed_ratio: float, stamina_frac: float, lateral_norm: float
+    ) -> "InputState":
+        from ..core.types import InputState
+        cfg = self._cfg
+        t = min(self._state_ticks / cfg.settle_ticks, 1.0)
+        target = self._settle_from_lane + (cfg.target_lane - self._settle_from_lane) * t
+        return InputState(
+            self._cruise_speed(speed_ratio, stamina_frac),
+            self._steer_to_lane(lateral_norm, target),
+        )
