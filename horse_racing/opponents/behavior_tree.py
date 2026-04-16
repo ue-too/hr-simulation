@@ -55,8 +55,8 @@ class BTConfig:
     """
     cruise_low: float = 0.55
     cruise_high: float = 0.70
-    target_lane: float = -0.80
-    lateral_aggression: float = 0.6
+    target_lane: float = -0.90
+    lateral_aggression: float = 0.7
     kick_phase: float = 0.75
     kick_early_margin: float = 0.10
     kick_late_cap: float = 0.92
@@ -90,8 +90,8 @@ class BTConfig:
 def archetype_stalker() -> BTConfig:
     """Classic stalker: sits 2nd-4th, kicks at the quarter pole. Balanced."""
     return BTConfig(
-        target_lane=-0.60,
-        lateral_aggression=0.5,
+        target_lane=-0.85,
+        lateral_aggression=0.65,
         w_draft=1.3,
         off_lane_penalty_start=0.06,
         off_lane_tang_penalty_max=0.16,
@@ -105,8 +105,8 @@ def archetype_front_runner() -> BTConfig:
     return BTConfig(
         cruise_low=0.72,
         cruise_high=0.85,
-        target_lane=-0.80,
-        lateral_aggression=0.8,
+        target_lane=-0.92,
+        lateral_aggression=0.85,
         kick_phase=0.65,
         kick_early_margin=0.05,
         kick_late_cap=0.88,
@@ -127,19 +127,19 @@ def archetype_front_runner() -> BTConfig:
 def archetype_closer() -> BTConfig:
     """Closer: hangs back, makes dramatic late run."""
     return BTConfig(
-        cruise_low=0.40,
-        cruise_high=0.52,
-        target_lane=-0.30,
-        lateral_aggression=0.4,
-        kick_phase=0.85,
-        kick_early_margin=0.05,
-        kick_late_cap=0.93,
-        conserve_threshold=0.50,
+        cruise_low=0.48,
+        cruise_high=0.60,
+        target_lane=-0.75,
+        lateral_aggression=0.6,
+        kick_phase=0.78,
+        kick_early_margin=0.06,
+        kick_late_cap=0.92,
+        conserve_threshold=0.40,
         settle_ticks=50,
         defend_on_score=0.8,
         w_pass=0.7,
         w_kick=1.5,
-        w_draft=1.5,
+        w_draft=1.8,
         off_lane_penalty_start=0.04,
         off_lane_tang_penalty_scale=0.65,
         off_lane_tang_penalty_max=0.24,
@@ -153,7 +153,7 @@ def archetype_speedball() -> BTConfig:
     return BTConfig(
         cruise_low=0.60,
         cruise_high=0.75,
-        target_lane=-0.20,
+        target_lane=-0.80,
         lateral_aggression=0.8,
         kick_phase=0.70,
         kick_early_margin=0.10,
@@ -177,8 +177,8 @@ def archetype_steady() -> BTConfig:
     return BTConfig(
         cruise_low=0.58,
         cruise_high=0.68,
-        target_lane=-0.70,
-        lateral_aggression=0.5,
+        target_lane=-0.88,
+        lateral_aggression=0.65,
         kick_phase=0.80,
         block_min_slowness=0.08,
         pass_cooldown_ticks=150,
@@ -198,8 +198,8 @@ def archetype_drifter() -> BTConfig:
     return BTConfig(
         cruise_low=0.52,
         cruise_high=0.65,
-        target_lane=-0.45,
-        lateral_aggression=0.55,
+        target_lane=-0.82,
+        lateral_aggression=0.65,
         kick_phase=0.78,
         w_pass=1.0,
         w_kick=1.05,
@@ -530,8 +530,7 @@ class BehaviorTreeStrategy(Strategy):
         from ..core.types import InputState
         if self._is_blocked_during_kick(obs):
             return InputState(1.0, 0.5)
-        normal = -0.5 if lateral_norm > -0.80 else -0.25
-        return InputState(1.0, normal)
+        return InputState(1.0, self._steer_to_lane(lateral_norm, self._cfg.target_lane))
 
     def _do_settle(
         self, speed_ratio: float, stamina_frac: float, lateral_norm: float
