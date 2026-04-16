@@ -32,6 +32,7 @@ class HorseRacingSingleEnv(gym.Env):
         max_steps: int = 5000,
         self_play_predict_fn=None,
         self_play_ratio: float = 0.0,
+        bt_ratio: float = 0.0,
     ):
         super().__init__()
         self._track_path = track_path
@@ -41,6 +42,7 @@ class HorseRacingSingleEnv(gym.Env):
         self._max_steps = max_steps
         self._self_play_predict_fn = self_play_predict_fn
         self._self_play_ratio = self_play_ratio
+        self._bt_ratio = bt_ratio
 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_SIZE,), dtype=np.float32
@@ -80,11 +82,17 @@ class HorseRacingSingleEnv(gym.Env):
         self._opponent_strategies = {}
         for h in self._race.state.horses:
             if h.id != self._agent_id:
+                roll = np.random.random()
                 if (self._self_play_predict_fn is not None
-                        and np.random.random() < self._self_play_ratio):
+                        and roll < self._self_play_ratio):
                     from ..opponents.self_play import SelfPlayStrategy
                     self._opponent_strategies[h.id] = SelfPlayStrategy(
                         self._self_play_predict_fn, self._race, h.id,
+                    )
+                elif np.random.random() < self._bt_ratio:
+                    from ..opponents.behavior_tree import BehaviorTreeStrategy
+                    self._opponent_strategies[h.id] = BehaviorTreeStrategy(
+                        self._race, h.id,
                     )
                 else:
                     self._opponent_strategies[h.id] = random_strategy()
