@@ -47,11 +47,15 @@ class BTConfig:
     kick_phase: float = 0.75
     block_progress_max: float = 0.03
     block_lateral_tol: float = 0.15
+    # Blocker must be meaningfully slower (not just "slower by anything")
+    block_min_slowness: float = 0.03
     conserve_threshold: float = 0.30
     # Passing commitment — minimum ticks to stay in pass maneuver
     pass_min_ticks: int = 40
     # Done passing once this far ahead in lateral offset (normalized)
     pass_clear_lateral: float = 0.25
+    # Cooldown ticks after finishing a pass before another can start
+    pass_cooldown_ticks: int = 80
 
 
 class BehaviorTreeStrategy(Strategy):
@@ -78,6 +82,7 @@ class BehaviorTreeStrategy(Strategy):
         self._cfg = config or BTConfig()
         self._state = self.STATE_CRUISE
         self._state_ticks = 0  # ticks spent in current state
+        self._cooldown_ticks = 0  # remaining cooldown ticks after a pass
 
     def act(self, progress: float) -> int:
         return 0
@@ -111,12 +116,15 @@ class BehaviorTreeStrategy(Strategy):
             if self._state_ticks >= cfg.pass_min_ticks and not self._still_blocked(obs):
                 self._state = self.STATE_CRUISE
                 self._state_ticks = 0
+                self._cooldown_ticks = cfg.pass_cooldown_ticks
             else:
                 return self._do_pass(stamina_frac)
 
         # CRUISE state — check for blocker to switch to passing
         if self._state == self.STATE_CRUISE:
-            if self._is_blocked(obs):
+            if self._cooldown_ticks > 0:
+                self._cooldown_ticks -= 1
+            elif self._is_blocked(obs):
                 self._state = self.STATE_PASSING
                 self._state_ticks = 0
                 return self._do_pass(stamina_frac)
@@ -132,13 +140,13 @@ class BehaviorTreeStrategy(Strategy):
         from ..core.types import InputState
         cfg = self._cfg
         # Default cruise effort is 0.25 (physics settles near cruise speed).
-        # Only deviate if significantly outside the band.
-        if speed_ratio < cfg.cruise_low:
-            tang = 0.5   # gentle push, not full
-        elif speed_ratio > cfg.cruise_high:
+        # Use a wider tolerance so minor overshoots don't trigger coast.
+        if speed_ratio < cfg.cruise_low - 0.05:
+            tang = 0.5   # gentle push
+        elif speed_ratio > cfg.cruise_high + 0.05:
             tang = 0.0   # coast
         else:
-            tang = 0.25  # maintain
+            tang = 0.25  # maintain (most of the time)
         if stamina_frac < cfg.conserve_threshold:
             tang = min(tang, 0.25)
         # Pull to inside rail. lateral_norm near -0.95 = inside rail.
@@ -182,7 +190,8 @@ class BehaviorTreeStrategy(Strategy):
                 continue
             if abs(normal_offset) > cfg.block_lateral_tol:
                 continue
-            if tvel_delta >= 0:
+            # Blocker must be meaningfully slower, not just slower by epsilon
+            if tvel_delta >= -cfg.block_min_slowness:
                 continue
             return True
         return False
