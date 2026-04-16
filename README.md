@@ -15,6 +15,9 @@ uv sync --extra dev   # include test dependencies
 uv run pytest
 ```
 
+Behavior-tree **config knobs** (cruise band, lane convergence, utility weights,
+block/defense thresholds) have explicit checks in [`tests/test_bt_knobs.py`](tests/test_bt_knobs.py).
+
 ## Training
 
 ```bash
