@@ -48,7 +48,11 @@ _OPP_BASE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE  # 26
 
 @dataclass
 class BTConfig:
-    """Tunable parameters for the utility-scored opponent."""
+    """Tunable parameters for the utility-scored opponent.
+
+    Keep **field names and defaults** in sync with ``bt-jockey.ts`` (``BTConfig`` +
+    ``DEFAULT_CONFIG``) and archetype tables in the ue-too horse-racing app.
+    """
     cruise_low: float = 0.55
     cruise_high: float = 0.70
     target_lane: float = -0.80
@@ -189,12 +193,32 @@ def archetype_steady() -> BTConfig:
     )
 
 
+def archetype_drifter() -> BTConfig:
+    """Drifter: mid-pack lane, draft-leaning; template for custom tuning."""
+    return BTConfig(
+        cruise_low=0.52,
+        cruise_high=0.65,
+        target_lane=-0.45,
+        lateral_aggression=0.55,
+        kick_phase=0.78,
+        w_pass=1.0,
+        w_kick=1.05,
+        w_draft=1.2,
+        off_lane_penalty_start=0.055,
+        off_lane_tang_penalty_scale=0.42,
+        off_lane_tang_penalty_max=0.14,
+        off_lane_decel_scale=0.95,
+        off_lane_accel_relief=0.04,
+    )
+
+
 ARCHETYPES = {
     "stalker": archetype_stalker,
     "front-runner": archetype_front_runner,
     "closer": archetype_closer,
     "speedball": archetype_speedball,
     "steady": archetype_steady,
+    "drifter": archetype_drifter,
 }
 
 
