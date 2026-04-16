@@ -40,8 +40,10 @@ _OPP_BASE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE  # 26
 @dataclass
 class BTConfig:
     """Tunable parameters for the BT opponent."""
-    cruise_low: float = 0.325   # obs speed ratio (tvel/max_speed)
-    cruise_high: float = 0.4
+    # obs speed_ratio is tvel/max_speed (20). Natural cruise ~13 m/s → ratio ~0.65.
+    # Band centered on natural cruise, wide enough to avoid constant push/coast flip.
+    cruise_low: float = 0.55    # ~11 m/s
+    cruise_high: float = 0.70   # ~14 m/s
     kick_phase: float = 0.75
     block_progress_max: float = 0.03
     block_lateral_tol: float = 0.15
@@ -129,12 +131,14 @@ class BehaviorTreeStrategy(Strategy):
     def _do_cruise(self, speed_ratio: float, stamina_frac: float, lateral_norm: float) -> "InputState":
         from ..core.types import InputState
         cfg = self._cfg
+        # Default cruise effort is 0.25 (physics settles near cruise speed).
+        # Only deviate if significantly outside the band.
         if speed_ratio < cfg.cruise_low:
-            tang = 0.75
+            tang = 0.5   # gentle push, not full
         elif speed_ratio > cfg.cruise_high:
-            tang = 0.0
+            tang = 0.0   # coast
         else:
-            tang = 0.25
+            tang = 0.25  # maintain
         if stamina_frac < cfg.conserve_threshold:
             tang = min(tang, 0.25)
         # Pull to inside rail. lateral_norm near -0.95 = inside rail.
