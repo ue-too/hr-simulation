@@ -44,7 +44,7 @@ def spawn_horses(
     segments: list[TrackSegment],
     horse_count: int = 4,
     attr_factories: dict[int, Callable[[], CoreAttributes]] | None = None,
-    max_spread: float = 3.0,
+    lane_spacing: float = 1.0,
 ) -> list[Horse]:
     """Spawn horses at the start of the track.
 
@@ -53,7 +53,8 @@ def spawn_horses(
         horse_count: Number of horses to spawn.
         attr_factories: Optional per-horse attribute factories keyed by horse id.
             If a horse id is not in the dict, create_default_attributes() is used.
-        max_spread: Maximum lateral spread across all horses (meters).
+        lane_spacing: Distance between adjacent horses (meters). Horse bodies
+            are 0.65m wide, so 1.0m gives ~0.35m gap between horses.
     """
     if len(segments) == 0:
         raise ValueError("spawn_horses: track has no segments")
@@ -64,7 +65,6 @@ def spawn_horses(
     probe = TrackNavigator(segments, half_track_width=TRACK_HALF_WIDTH)
     frame = probe.get_track_frame(start_point)
 
-    lane_spacing = max_spread / (count - 1) if count > 1 else 0.0
     inner_edge = -TRACK_HALF_WIDTH * 0.95  # just off the inside rail
 
     horses: list[Horse] = []
