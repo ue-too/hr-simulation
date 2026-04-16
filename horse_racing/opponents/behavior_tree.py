@@ -50,8 +50,10 @@ _OPP_BASE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE  # 26
 @dataclass
 class BTConfig:
     """Tunable parameters for the BT opponent."""
-    cruise_low: float = 0.325   # speed_ratio floor (= 0.65 of cruise / 2, since obs normalizes by max_speed)
-    cruise_high: float = 0.4    # speed_ratio ceiling (= 0.80 of cruise / 2)
+    # Note: obs[1] is tvel / max_speed (20). cruise_speed = 13, so cruise = 0.65 ratio.
+    # Band: 65-80% of cruise speed → 8.45-10.4 m/s → 0.42-0.52 ratio.
+    cruise_low: float = 0.42
+    cruise_high: float = 0.52
     kick_phase: float = 0.75    # when to start sprinting
     # Blocker detection (using obs opponent slots)
     block_progress_max: float = 0.03    # blocker within 3% ahead
