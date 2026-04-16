@@ -215,6 +215,20 @@ toward the archetype lane over `settle_ticks` instead of snapping.
 | `w_kick` | 1.0 | Weight multiplier on kick utility score. |
 | `w_draft` | 1.0 | Weight multiplier on cruise-while-drafting bonus. |
 
+## Systematic tuning (Python batch runner)
+
+Use `scripts/tune_bt.py` to run many headless races and print aggregate **win
+rates** and **mean finish position** per archetype. Pass `--randomize-attrs` to
+match training-env opponent variety (±10% stats). Example:
+
+```bash
+uv run python scripts/tune_bt.py --races 200 --seed 42
+uv run python scripts/tune_bt.py --races 500 --randomize-attrs --csv artifacts/bt_tune.csv
+```
+
+After changing weights in `BTConfig` or an archetype factory, re-run the same
+command and compare tables. See the project `README.md` for all CLI flags.
+
 ## TS / Python parity
 
 This file (`behavior_tree.py`) and the web sim version (`bt-jockey.ts`) are

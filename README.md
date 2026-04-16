@@ -21,6 +21,36 @@ uv run pytest
 uv run python scripts/train.py --track tracks/simple_oval.json --total-timesteps 1000000
 ```
 
+## Tuning the utility-based BT (batch statistics)
+
+Run headless races where every horse uses `BehaviorTreeStrategy` with a fixed
+archetype lineup, then inspect win rates and mean finish position. Use this to
+see whether an archetype dominates, never wins, or looks balanced after you
+change weights in `horse_racing/opponents/behavior_tree.py`.
+
+```bash
+# 200 races on the default test oval, reproducible seed, default archetypes per lane
+uv run python scripts/tune_bt.py --races 200 --seed 42
+
+# Same physics variety as training env opponents (±10% attributes)
+uv run python scripts/tune_bt.py --races 500 --randomize-attrs --seed 42
+
+# Custom track and six horses (archetypes repeat in round-robin order)
+uv run python scripts/tune_bt.py --track tracks/simple_oval.json --horse-count 6 --races 300
+
+# Explicit archetype per slot: repeats if fewer names than horses
+uv run python scripts/tune_bt.py --archetypes closer,speedball,stalker,front-runner --races 100
+
+# Append results for spreadsheet analysis
+uv run python scripts/tune_bt.py --races 1000 --csv artifacts/bt_tune_runs.csv
+```
+
+Interpretation: **Win%** is how often that archetype finished first (any slot).
+**Mean place** is the average finishing position across all appearances of that
+archetype in the batch. Tune one archetype at a time, re-run the script, and
+compare before/after. See `horse_racing/opponents/JOCKEY.md` for what each
+parameter does.
+
 ## Validation Against JS Server
 
 Start the JS validation server at `http://localhost:3456`, then:
