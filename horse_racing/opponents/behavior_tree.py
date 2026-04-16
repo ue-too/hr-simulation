@@ -1,26 +1,16 @@
 """Behavior-tree opponent: reactive, tactical jockey with racing knowledge.
 
-Operates on the same observation vector that the RL agent sees (141 floats).
-This ensures the BT only uses information the agent has access to — if the
-BT can win from this obs, the agent should be able to learn the same tactics.
+Uses the same observation vector the RL agent sees. Holds per-horse state
+so maneuvers (passing, kicking) commit for multiple ticks instead of
+recalculating from scratch every frame.
 
 Observation layout (from core/observation.py):
 - [0]     track_progress
 - [1]     tangential_vel / max_speed
-- [2]     normal_vel / max_speed
 - [3]     stamina / max_stamina
-- [4-7]   effective degradation ratios
-- [8-13]  normalized trait values
-- [14]    last_drain / max_stamina
 - [15]    lateral_offset / TRACK_HALF_WIDTH   (negative = toward inside)
-- [16-17] curvature, slope at current position
-- [18-25] 4× (lookahead curvature, slope)
-- [26-140] 23× opponent slots of 5 values each:
-    [0] active (1.0 if filled)
-    [1] progress_delta (opp.progress - self.progress)
-    [2] (opp.tvel - self.tvel) / max_speed
-    [3] normal_offset (opp.lateral - self.lateral, normalized by TRACK_HALF_WIDTH)
-    [4] (opp.nvel - self.nvel) / max_speed
+- [26+]   23× opponent slots of 5 values:
+    [0] active, [1] progress_delta, [2] tvel_delta, [3] norm_offset, [4] nvel_delta
 """
 
 from __future__ import annotations
@@ -50,25 +40,30 @@ _OPP_BASE = SELF_STATE_SIZE + TRACK_CONTEXT_SIZE  # 26
 @dataclass
 class BTConfig:
     """Tunable parameters for the BT opponent."""
-    cruise_low: float = 0.325   # speed_ratio floor (= 0.65 of cruise / 2, since obs normalizes by max_speed)
-    cruise_high: float = 0.4    # speed_ratio ceiling (= 0.80 of cruise / 2)
-    kick_phase: float = 0.75    # when to start sprinting
-    # Blocker detection (using obs opponent slots)
-    block_progress_max: float = 0.03    # blocker within 3% ahead
-    block_lateral_tol: float = 0.15     # norm_offset within this means same lane
-    # Stamina
+    cruise_low: float = 0.325   # obs speed ratio (tvel/max_speed)
+    cruise_high: float = 0.4
+    kick_phase: float = 0.75
+    block_progress_max: float = 0.03
+    block_lateral_tol: float = 0.15
     conserve_threshold: float = 0.30
+    # Passing commitment — minimum ticks to stay in pass maneuver
+    pass_min_ticks: int = 40
+    # Done passing once this far ahead in lateral offset (normalized)
+    pass_clear_lateral: float = 0.25
 
 
 class BehaviorTreeStrategy(Strategy):
-    """Reactive BT-style opponent using only the agent's observation vector.
+    """Reactive BT jockey with committed maneuvers.
 
-    Priority-ordered decisions each tick:
-    1. Final kick — if past kick_phase, sprint toward inside rail
-    2. Unbox — if a slower opponent is directly ahead, swing wide
-    3. Rail discipline — hold inside line if clear
-    4. Cruise pacing — maintain speed in cruise band
+    States:
+    - CRUISE: hold inside line in speed band
+    - PASSING: swung wide to overtake a blocker — commits for pass_min_ticks
+    - KICK: final sprint, pull inside unless blocked
     """
+
+    STATE_CRUISE = 0
+    STATE_PASSING = 1
+    STATE_KICK = 2
 
     def __init__(
         self,
@@ -79,6 +74,8 @@ class BehaviorTreeStrategy(Strategy):
         self._race = race_ref
         self._horse_id = horse_id
         self._cfg = config or BTConfig()
+        self._state = self.STATE_CRUISE
+        self._state_ticks = 0  # ticks spent in current state
 
     def act(self, progress: float) -> int:
         return 0
@@ -86,62 +83,97 @@ class BehaviorTreeStrategy(Strategy):
     def act_continuous(self, horse: "Horse") -> "InputState | None":
         from ..core.types import InputState
 
-        # Build the observation for this horse (same as what agent sees)
+        cfg = self._cfg
         all_obs = build_observations(self._race)
         obs = all_obs[self._horse_id]
 
-        cfg = self._cfg
         progress = float(obs[0])
-        speed_ratio = float(obs[1])           # tvel / max_speed
+        speed_ratio = float(obs[1])
         stamina_frac = float(obs[3])
-        lateral_norm = float(obs[15])         # lateral / TRACK_HALF_WIDTH
+        lateral_norm = float(obs[15])
 
-        # --- Phase 1: Final kick ---
+        # Transition to KICK when past kick phase (absorbing)
         if progress >= cfg.kick_phase:
-            tang = 1.0
-            normal = self._kick_lane(obs, lateral_norm)
-            return InputState(tang, normal)
+            if self._state != self.STATE_KICK:
+                self._state = self.STATE_KICK
+                self._state_ticks = 0
 
-        # --- Phase 2: Unbox — blocked by slower opponent ---
-        if self._is_blocked(obs):
-            # Swing wide to pass
-            tang = 0.75 if stamina_frac > cfg.conserve_threshold else 0.5
-            normal = 0.5  # outward (away from inside rail)
-            return InputState(tang, normal)
+        # State machine
+        if self._state == self.STATE_KICK:
+            self._state_ticks += 1
+            return self._do_kick(obs, lateral_norm)
 
-        # --- Phase 3: Cruise + hold inside ---
+        if self._state == self.STATE_PASSING:
+            self._state_ticks += 1
+            # Exit passing when: committed ticks elapsed AND clear of blocker
+            if self._state_ticks >= cfg.pass_min_ticks and not self._still_blocked(obs):
+                self._state = self.STATE_CRUISE
+                self._state_ticks = 0
+            else:
+                return self._do_pass(stamina_frac)
+
+        # CRUISE state — check for blocker to switch to passing
+        if self._state == self.STATE_CRUISE:
+            if self._is_blocked(obs):
+                self._state = self.STATE_PASSING
+                self._state_ticks = 0
+                return self._do_pass(stamina_frac)
+            self._state_ticks += 1
+            return self._do_cruise(speed_ratio, stamina_frac, lateral_norm)
+
+        # Fallback
+        return InputState(0.25, -0.25)
+
+    # -------- Actions per state --------
+
+    def _do_cruise(self, speed_ratio: float, stamina_frac: float, lateral_norm: float) -> "InputState":
+        from ..core.types import InputState
+        cfg = self._cfg
         if speed_ratio < cfg.cruise_low:
             tang = 0.75
         elif speed_ratio > cfg.cruise_high:
             tang = 0.0
         else:
             tang = 0.25
-
         if stamina_frac < cfg.conserve_threshold:
             tang = min(tang, 0.25)
-
-        # lateral_norm is negative near inside rail. Push in if not close.
-        # Inside rail at -0.95 after 0.95 × TRACK_HALF_WIDTH normalization
-        if lateral_norm > -0.75:
-            normal = -0.75
+        # Pull to inside rail. lateral_norm near -0.95 = inside rail.
+        if lateral_norm > -0.80:
+            normal = -0.5
         else:
             normal = -0.25
-
         return InputState(tang, normal)
 
-    # -------- Obs-based perception --------
+    def _do_pass(self, stamina_frac: float) -> "InputState":
+        from ..core.types import InputState
+        cfg = self._cfg
+        tang = 0.75 if stamina_frac > cfg.conserve_threshold else 0.5
+        # Commit wide — stay there until maneuver ends
+        return InputState(tang, 0.5)
+
+    def _do_kick(self, obs: "np.ndarray", lateral_norm: float) -> "InputState":
+        from ..core.types import InputState
+        if self._is_blocked(obs):
+            return InputState(1.0, 0.5)
+        # Pull to inside line for optimal path
+        if lateral_norm > -0.80:
+            normal = -0.5
+        else:
+            normal = -0.25
+        return InputState(1.0, normal)
+
+    # -------- Perception helpers --------
 
     def _is_blocked(self, obs: "np.ndarray") -> bool:
-        """Check if an opponent is directly ahead in the same lane, moving slower."""
+        """Opponent directly ahead in same lane, moving slower."""
         cfg = self._cfg
         for s in range(OPPONENT_SLOTS):
             base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
-            active = obs[base + 0]
-            if active < 0.5:
+            if obs[base + 0] < 0.5:
                 continue
-            progress_delta = obs[base + 1]      # positive = opp ahead
-            tvel_delta = obs[base + 2]          # negative = opp slower
-            normal_offset = obs[base + 3]       # lateral distance, normalized
+            progress_delta = obs[base + 1]
+            tvel_delta = obs[base + 2]
+            normal_offset = obs[base + 3]
             if not (0.0 < progress_delta < cfg.block_progress_max):
                 continue
             if abs(normal_offset) > cfg.block_lateral_tol:
@@ -151,10 +183,17 @@ class BehaviorTreeStrategy(Strategy):
             return True
         return False
 
-    def _kick_lane(self, obs: "np.ndarray", lateral_norm: float) -> float:
-        """During kick phase: go wide if blocked, else inside."""
-        if self._is_blocked(obs):
-            return 0.5
-        if lateral_norm > -0.75:
-            return -0.75
-        return -0.25
+    def _still_blocked(self, obs: "np.ndarray") -> bool:
+        """Looser check during passing — any opponent at similar progress?"""
+        cfg = self._cfg
+        for s in range(OPPONENT_SLOTS):
+            base = _OPP_BASE + s * OPPONENT_SLOT_SIZE
+            if obs[base + 0] < 0.5:
+                continue
+            progress_delta = obs[base + 1]
+            normal_offset = obs[base + 3]
+            # Still blocked if an opponent is level-to-just-ahead on the inside
+            if -0.01 < progress_delta < cfg.block_progress_max:
+                if normal_offset < -cfg.pass_clear_lateral:
+                    return True
+        return False
