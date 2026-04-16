@@ -10,6 +10,9 @@ Example::
     uv run python scripts/tune_bt.py --races 200 --seed 42
     uv run python scripts/tune_bt.py --track tracks/test_oval.json --races 500 \\
         --randomize-attrs --horse-count 6 --csv artifacts/bt_tune.csv
+
+A tqdm progress bar runs on stderr unless ``--no-progress``, ``--verbose``,
+or stderr is not a TTY (e.g. when piping).
 """
 
 from __future__ import annotations
@@ -19,8 +22,10 @@ import csv
 import random
 import sys
 import time
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
+
+from tqdm import tqdm
 
 # Repo root (parent of scripts/)
 ROOT = Path(__file__).resolve().parent.parent
@@ -181,6 +186,11 @@ def main() -> None:
         action="store_true",
         help="Print each race finish order",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the progress bar (TTY: on by default)",
+    )
     args = parser.parse_args()
 
     track_path = args.track or _default_track()
@@ -213,8 +223,23 @@ def main() -> None:
         if new_file:
             csv_writer.writeheader()
 
+    use_progress = (
+        not args.no_progress
+        and not args.verbose
+        and sys.stderr.isatty()
+    )
+
     try:
-        for r in range(args.races):
+        race_iter = range(args.races)
+        if use_progress:
+            race_iter = tqdm(
+                race_iter,
+                desc="BT races",
+                unit="race",
+                file=sys.stderr,
+                leave=True,
+            )
+        for r in race_iter:
             summary = run_one_race(
                 segments,
                 args.horse_count,
@@ -228,8 +253,14 @@ def main() -> None:
             for row in summary["per_horse"]:
                 sum_place[row["archetype"]].append(float(row["place"]))
 
-            if args.verbose:
-                print(
+            if use_progress:
+                race_iter.set_postfix(
+                    last_win=w[:12],
+                    ticks=summary["ticks"],
+                    refresh=False,
+                )
+            elif args.verbose:
+                tqdm.write(
                     f"race {r + 1:4d}  ticks={summary['ticks']:4d}  "
                     f"winner={w:12s}  order={summary['finish_order']}"
                 )

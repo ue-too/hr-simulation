@@ -43,7 +43,14 @@ uv run python scripts/tune_bt.py --archetypes closer,speedball,stalker,front-run
 
 # Append results for spreadsheet analysis
 uv run python scripts/tune_bt.py --races 1000 --csv artifacts/bt_tune_runs.csv
+
+# Plain output (no progress bar — useful when piping or in CI)
+uv run python scripts/tune_bt.py --races 200 --no-progress
 ```
+
+While running, a **progress bar** appears on stderr (race count, last winner,
+ticks). It is off automatically when stderr is not a TTY, when `--verbose` is
+set, or when you pass `--no-progress`.
 
 Interpretation: **Win%** is how often that archetype finished first (any slot).
 **Mean place** is the average finishing position across all appearances of that
